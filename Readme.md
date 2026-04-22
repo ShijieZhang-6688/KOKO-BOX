@@ -1,13 +1,12 @@
 # Koko Box UI Prototype
 
-This workspace now contains a uni-app-style Vue prototype for a calm, bright, and cute companion-pet interface.
+This workspace contains a uni-app Vue prototype that is now standardized for WeChat Mini Program development only.
 
 ## Run locally
 
 1. Install dependencies: `npm install`
-2. Start the H5 dev server: `npm run dev`
-3. Build the H5 target: `npm run build`
-4. Build the WeChat Mini Program target: `npm run build:mp-weixin`
+2. Start the WeChat Mini Program dev build: `npm run dev`
+3. Create a production build for the WeChat Mini Program: `npm run build`
 
 ## WeChat cloud login
 
@@ -25,7 +24,7 @@ The first real backend feature uses WeChat CloudBase for automatic mini-program 
 export const WECHAT_CLOUD_ENV_ID = 'your-real-env-id'
 ```
 
-If the environment ID is empty, the app intentionally falls back to an H5-safe mock session so local UI preview still works.
+If the environment ID is empty, the app intentionally falls back to a mock session so local Mini Program debugging can continue.
 
 ### 2. Create database collections
 
@@ -50,7 +49,8 @@ The `login` cloud function uses `cloud.getWXContext()` to get `OPENID`, creates 
 
 1. Open the project root in WeChat DevTools.
 2. Ensure `app.json`, `pages.json`, and `manifest.json` are present in the root.
-3. Use the `mp-weixin` build output when importing a compiled package.
+3. The Mini Program output directory is fixed at `unpackage/dist/mp-weixin/`.
+4. If the output directory does not exist yet, run `npm run dev` once before opening the project in WeChat DevTools.
 
 ## Current scope
 
@@ -66,4 +66,5 @@ The `login` cloud function uses `cloud.getWXContext()` to get `OPENID`, creates 
 ## Notes
 
 - Most feature pages are still static UI while login is being connected.
+- `unpackage/` is a local build artifact directory and should not be committed.
 - CloudBase free quota and billing can change, so confirm the current rules in the WeChat Cloud Development console before release.
