@@ -3,34 +3,59 @@ import { computed, onMounted, watch } from 'vue'
 import { isWechatCloudConfigured } from '../config/cloud'
 import { useAuth } from '../composables/useAuth'
 import { useKokoState } from '../composables/useKokoState'
-import { useLanguage } from '../composables/useLanguage'
 
-const { t } = useLanguage()
-const { user, pet: authPet, loading, error, isMockSession, isLoggedIn, login, syncUserProfile } = useAuth()
-const { pet, archive, metrics, weeklyCompletionRate, syncPetFromAuth } = useKokoState()
+const { user, pet: authPet, loading, error, isMockSession, isLoggedIn, login, syncUserProfile, importWechatProfile } = useAuth()
+const { pet, weeklyCompletionRate, syncPetFromAuth } = useKokoState()
 
 const displayName = computed(() => user.value?.nickName || 'Koko Friend')
-const accountStatus = computed(() => {
+const profileInitial = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'K')
+
+const accountTone = computed(() => {
   if (loading.value) {
-    return '连接中...'
+    return 'loading'
+  }
+
+  if (isLoggedIn.value) {
+    return isMockSession.value ? 'preview' : 'linked'
+  }
+
+  return error.value ? 'warning' : 'idle'
+})
+
+const accountStatusLabel = computed(() => {
+  if (loading.value) {
+    return '连接中'
   }
 
   if (isLoggedIn.value) {
     return isMockSession.value ? '预览模式' : '微信已连接'
   }
 
-  return isWechatCloudConfigured() ? '点击重试连接' : '预览模式'
+  return isWechatCloudConfigured() ? '等待连接' : '本地预览'
 })
 
-const shouldShowRetry = computed(() => Boolean(error.value) || (!loading.value && !isLoggedIn.value))
-const profileInitial = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'K')
+const accountStatusHint = computed(() => {
+  if (loading.value) {
+    return '正在同步你的账户和宠物资料。'
+  }
+
+  if (isLoggedIn.value) {
+    return isMockSession.value ? '当前是演示数据，你仍然可以继续体验主要功能。' : '头像昵称已和当前小程序账户同步。'
+  }
+
+  return error.value ? '登录遇到一点问题，可以在这里直接重试。' : '你可以继续编辑昵称，稍后再重新连接。'
+})
+
+const shouldShowRetry = computed(() => Boolean(error.value) || (!loading.value && !isLoggedIn.value && isWechatCloudConfigured()))
+
+const profileMetrics = computed(() => [
+  { label: '心情', value: pet.value.mood },
+  { label: '亲密度', value: pet.value.intimacy },
+  { label: '本周完成度', value: weeklyCompletionRate.value },
+])
 
 const openPage = (url: string) => {
   uni.navigateTo({ url })
-}
-
-const openTabPage = (url: string) => {
-  uni.switchTab({ url })
 }
 
 const handleLogin = () => {
@@ -42,6 +67,17 @@ const handleNicknameBlur = (event: { detail?: { value?: string } }) => {
 
   if (nickName && nickName !== user.value?.nickName) {
     void syncUserProfile({ nickName })
+  }
+}
+
+const handleChooseAvatar = (event: { detail?: { avatarUrl?: string } }) => {
+  const avatarFilePath = event.detail?.avatarUrl
+
+  if (avatarFilePath) {
+    void importWechatProfile({
+      nickName: user.value?.nickName,
+      avatarFilePath,
+    })
   }
 }
 
@@ -59,128 +95,140 @@ onMounted(() => {
 </script>
 
 <template>
-  <view class="profile-page">
-    <view class="profile-hero-card">
-      <view class="profile-hero-banner">
-        <view class="profile-eyebrow">Profile</view>
-        <view class="profile-hero-title">A calm, bright home for your account details.</view>
-        <view class="profile-hero-note">Keep your nickname, avatar, and companion details tidy in one place.</view>
+  <view class="profile-page profile-page--light">
+    <view class="profile-card-main">
+      <view class="profile-card-main__top">
+        <view class="profile-card-main__copy">
+          <view class="profile-card-main__eyebrow">个人中心</view>
+          <view class="profile-card-main__title">账户、设置和宠物状态都在这里</view>
+          <view class="profile-card-main__subtitle">保持信息简单清楚，随时继续陪伴和养成。</view>
+        </view>
+        <view class="profile-card-main__pet-chip">
+          <view>{{ pet.name }}</view>
+          <view>{{ pet.stage }}</view>
+        </view>
       </view>
 
-      <view class="profile-hero-top">
-        <button class="profile-avatar profile-avatar-button" open-type="chooseAvatar">
+      <view class="profile-identity-card">
+        <button class="profile-avatar profile-avatar-button" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
           <image v-if="user?.avatarUrl" :src="user.avatarUrl" mode="aspectFill" />
           <view v-else>{{ profileInitial }}</view>
         </button>
 
-        <view class="profile-identity">
+        <view class="profile-identity-card__main">
           <input
             class="profile-name-input"
             type="nickname"
             :value="displayName"
-            placeholder="你的昵称"
+            placeholder="输入你的昵称"
             @blur="handleNicknameBlur"
           />
-          <view class="profile-account-row">
+          <view class="profile-status-tag" :class="`profile-status-tag--${accountTone}`">
             <view class="profile-status-dot" />
-            <view>{{ accountStatus }}</view>
+            <view>{{ accountStatusLabel }}</view>
           </view>
-          <view class="profile-profile-tip">Tap the avatar or nickname field to import your WeChat profile.</view>
+          <view class="profile-identity-card__hint">{{ accountStatusHint }}</view>
         </view>
 
-        <button v-if="shouldShowRetry" class="profile-retry-button" :disabled="loading" @click="handleLogin">
-          {{ loading ? '请稍候' : '重试连接' }}
+        <button v-if="shouldShowRetry" class="profile-inline-button" :disabled="loading" @click="handleLogin">
+          {{ loading ? '稍候' : '重试连接' }}
         </button>
       </view>
 
-      <view class="profile-companion-card">
+      <view class="profile-pet-summary">
         <view>
-          <view class="profile-section-label">Companion</view>
-          <view class="profile-companion-title">{{ pet.name }}</view>
-          <view class="profile-companion-subtitle">{{ pet.stage }} · {{ pet.state }}</view>
-        </view>
-        <view class="profile-pet-mark">KB</view>
-      </view>
-
-      <view class="profile-stat-grid">
-        <view class="profile-stat-item">
-          <view class="profile-stat-head">
-            <view>心情</view>
-            <view>{{ pet.mood }}</view>
-          </view>
-          <view class="profile-stat-track"><view class="profile-stat-fill" :style="{ width: `${pet.mood}%` }" /></view>
-        </view>
-        <view class="profile-stat-item">
-          <view class="profile-stat-head">
-            <view>亲密度</view>
-            <view>{{ pet.intimacy }}</view>
-          </view>
-          <view class="profile-stat-track"><view class="profile-stat-fill" :style="{ width: `${pet.intimacy}%` }" /></view>
-        </view>
-        <view class="profile-stat-item">
-          <view class="profile-stat-head">
-            <view>完成率</view>
-            <view>{{ weeklyCompletionRate }}%</view>
-          </view>
-          <view class="profile-stat-track"><view class="profile-stat-fill" :style="{ width: `${weeklyCompletionRate}%` }" /></view>
+          <view class="profile-section-kicker">宠物状态</view>
+          <view class="profile-pet-summary__title">{{ pet.name }} · {{ pet.state }}</view>
+          <view class="profile-pet-summary__copy">当前处于 {{ pet.stage }} 阶段，可以继续照料、聊天和查看成长记录。</view>
         </view>
       </view>
 
-      <view v-if="error" class="profile-error-card">
-        <view>连接异常</view>
-        <view>{{ error }}</view>
+      <view class="profile-meter-list">
+        <view v-for="item in profileMetrics" :key="item.label" class="profile-meter-item">
+          <view class="profile-meter-item__head">
+            <view>{{ item.label }}</view>
+            <view>{{ item.value }}{{ item.label === '本周完成度' ? '%' : '' }}</view>
+          </view>
+          <view class="profile-meter-item__track">
+            <view class="profile-meter-item__fill" :style="{ width: `${item.value}%` }" />
+          </view>
+        </view>
+      </view>
+
+      <view v-if="error" class="profile-inline-error">
+        {{ error }}
       </view>
     </view>
 
-    <view class="panel-block">
-      <view class="eyebrow">{{ t.profile.archiveLabel }}</view>
-      <view>{{ t.profile.archiveTitle }}</view>
-      <view class="archive-grid">
-        <view class="archive-item">
-          <view>领养时间</view>
-          <view>{{ archive.adoptedAt }}</view>
+    <view class="profile-group-card">
+      <view class="profile-group-card__title">账户</view>
+      <button class="profile-list-row">
+        <view class="profile-list-icon profile-list-icon--account">
+          <view class="profile-icon-person" />
         </view>
-        <view class="archive-item">
-          <view>陪伴时长</view>
-          <view>{{ metrics.companionMinutes }} 分钟</view>
+        <view class="profile-list-copy">
+          <view>个人信息</view>
+          <view>头像、昵称和当前连接状态</view>
         </view>
-        <view class="archive-item">
-          <view>最近病史</view>
-          <view>{{ archive.medicalLogs[0]?.note || '暂无' }}</view>
+        <view class="profile-list-value">{{ accountStatusLabel }}</view>
+      </button>
+      <button class="profile-list-row" @click="handleLogin">
+        <view class="profile-list-icon profile-list-icon--sync">
+          <view class="profile-icon-sync" />
         </view>
-        <view class="archive-item">
-          <view>最近里程碑</view>
-          <view>{{ archive.milestones[0]?.title || '暂无' }}</view>
+        <view class="profile-list-copy">
+          <view>同步账户</view>
+          <view>重新获取微信资料或更新当前状态</view>
         </view>
-      </view>
+        <view class="profile-list-arrow">></view>
+      </button>
     </view>
 
-    <view class="profile-menu-card">
-      <button class="profile-menu-row" @click="openTabPage('/pages/planner/index')">
-        <view class="profile-menu-icon profile-menu-icon--sun">P</view>
-        <view>
-          <view>计划</view>
-          <view>管理待办和完成奖励</view>
+    <view class="profile-group-card">
+      <view class="profile-group-card__title">宠物状态</view>
+      <button class="profile-list-row" @click="openPage('/pages/archive/index')">
+        <view class="profile-list-icon profile-list-icon--pet">
+          <view class="profile-icon-paw" />
         </view>
-        <view class="profile-menu-arrow">-></view>
+        <view class="profile-list-copy">
+          <view>成长记录</view>
+          <view>查看生命档案、里程碑和恢复记录</view>
+        </view>
+        <view class="profile-list-arrow">></view>
       </button>
-
-      <button class="profile-menu-row" @click="openPage('/pages/hardware/index')">
-        <view class="profile-menu-icon profile-menu-icon--mint">H</view>
-        <view>
-          <view>硬件</view>
-          <view>查看三端联动状态和同步日志</view>
+      <button class="profile-list-row" @click="openPage('/pages/chat/index')">
+        <view class="profile-list-icon profile-list-icon--chat">
+          <view class="profile-icon-chat" />
         </view>
-        <view class="profile-menu-arrow">-></view>
+        <view class="profile-list-copy">
+          <view>继续陪伴</view>
+          <view>和 {{ pet.name }} 聊天，保持情绪和亲密度成长</view>
+        </view>
+        <view class="profile-list-arrow">></view>
       </button>
+    </view>
 
-      <button class="profile-menu-row" @click="openPage('/pages/settings/index')">
-        <view class="profile-menu-icon profile-menu-icon--sky">S</view>
-        <view>
-          <view>设置</view>
-          <view>切换语言、隐私和 Demo 模式</view>
+    <view class="profile-group-card">
+      <view class="profile-group-card__title">设置</view>
+      <button class="profile-list-row" @click="openPage('/pages/settings/index')">
+        <view class="profile-list-icon profile-list-icon--settings">
+          <view class="profile-icon-sliders" />
         </view>
-        <view class="profile-menu-arrow">-></view>
+        <view class="profile-list-copy">
+          <view>应用设置</view>
+          <view>语言、隐私和 Demo 模式</view>
+        </view>
+        <view class="profile-list-arrow">></view>
+      </button>
+      <button class="profile-list-row" @click="openPage('/pages/settings/index')">
+        <view class="profile-list-icon profile-list-icon--privacy">
+          <view class="profile-icon-shield" />
+        </view>
+        <view class="profile-list-copy">
+          <view>隐私与会话</view>
+          <view>管理聊天隐藏、摘要同步和清空记录</view>
+        </view>
+        <view class="profile-list-arrow">></view>
       </button>
     </view>
   </view>
