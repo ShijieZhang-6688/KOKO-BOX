@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import StatusCard from '../components/StatusCard.vue'
 import { useKokoState } from '../composables/useKokoState'
 import { useLanguage } from '../composables/useLanguage'
@@ -8,11 +8,10 @@ import type { StatKey } from '../i18n'
 const { t } = useLanguage()
 const { pet, carePet } = useKokoState()
 const showGrowthPopup = ref(false)
-const petImageSrc = ref('')
+const petPose = ref<'idle' | 'wave' | 'snack' | 'sleep'>('idle')
+const petBubble = ref('Tap Koko to say hi.')
 
-onMounted(() => {
-  petImageSrc.value = ['/static', 'pet', '1.png'].join('/')
-})
+let poseTimer: ReturnType<typeof setTimeout> | undefined
 
 const growthSteps = [
   '蛋期',
@@ -54,6 +53,56 @@ const statEntries = computed(() => {
 const openPage = (url: string) => {
   uni.navigateTo({ url })
 }
+
+const setPetPose = (pose: typeof petPose.value, bubble: string) => {
+  petPose.value = pose
+  petBubble.value = bubble
+
+  if (poseTimer) {
+    clearTimeout(poseTimer)
+  }
+
+  poseTimer = setTimeout(() => {
+    petPose.value = 'idle'
+    petBubble.value = 'Koko is waiting for your next move.'
+  }, 1800)
+}
+
+const tapPet = () => {
+  setPetPose('wave', `${pet.name} is happy to see you.`)
+}
+
+const petActions = [
+  {
+    key: 'wave',
+    label: 'Wave',
+    bubble: 'Koko leans closer and wiggles a paw.',
+    run: () => {},
+  },
+  {
+    key: 'snack',
+    label: 'Snack',
+    bubble: 'A tiny snack makes the mood meter glow.',
+    run: () => carePet('feedMeal'),
+  },
+  {
+    key: 'sleep',
+    label: 'Rest',
+    bubble: 'Koko curls up for a soft little recharge.',
+    run: () => carePet('rest'),
+  },
+] as const
+
+const triggerPetAction = (action: (typeof petActions)[number]) => {
+  action.run()
+  setPetPose(action.key, action.bubble)
+}
+
+onBeforeUnmount(() => {
+  if (poseTimer) {
+    clearTimeout(poseTimer)
+  }
+})
 </script>
 
 <template>
@@ -70,7 +119,42 @@ const openPage = (url: string) => {
       <view class="hero-card panel-block--full home-pet-card">
         <view class="hero-layout hero-layout--centered">
           <view class="pet-image-frame">
-            <image class="home-pet-image" :src="petImageSrc" mode="widthFix" />
+            <view class="home-pet-placeholder">
+              <view class="pet-stage">
+                <view class="pet-bubble">{{ petBubble }}</view>
+                <button class="pet-shell-button" @click="tapPet">
+                  <view class="pet-shell" :class="`pet-shell--${petPose}`">
+                    <view class="pet-shadow" />
+                    <view class="pet-tail" />
+                    <view class="pet-body">
+                      <view class="pet-ear pet-ear--left" />
+                      <view class="pet-ear pet-ear--right" />
+                      <view class="pet-face">
+                        <view class="pet-blush pet-blush--left" />
+                        <view class="pet-blush pet-blush--right" />
+                        <view class="pet-eye pet-eye--left" />
+                        <view class="pet-eye pet-eye--right" />
+                        <view class="pet-mouth" />
+                      </view>
+                      <view class="pet-arm pet-arm--left" />
+                      <view class="pet-arm pet-arm--right" />
+                      <view class="pet-foot pet-foot--left" />
+                      <view class="pet-foot pet-foot--right" />
+                    </view>
+                  </view>
+                </button>
+                <view class="pet-action-row">
+                  <button
+                    v-for="action in petActions"
+                    :key="action.key"
+                    class="pet-action-pill"
+                    @click="triggerPetAction(action)"
+                  >
+                    {{ action.label }}
+                  </button>
+                </view>
+              </view>
+            </view>
           </view>
 
           <view class="hero-copy hero-copy--centered">
