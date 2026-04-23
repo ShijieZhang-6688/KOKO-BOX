@@ -2,9 +2,18 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import PageScaffold from '../../src/components/PageScaffold.vue'
+import { useWechatShare } from '../../src/composables/useWechatShare'
 import { useAuth } from '../../src/composables/useAuth'
 
 const { loading, error, hasCompletedOnboarding, completeOnboarding, refreshOnboardingState } = useAuth()
+
+useWechatShare({
+  path: '/pages/index/index',
+  query: {
+    from: 'share',
+    page: 'landing',
+  },
+})
 
 const useWechatProfile = ref(true)
 const wechatNickname = ref('')

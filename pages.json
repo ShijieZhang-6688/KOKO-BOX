@@ -3,67 +3,89 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/home/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/care/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/chat/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/stats/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/profile/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/archive/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/town/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/planner/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/hardware/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     },
     {
       "path": "pages/settings/index",
       "style": {
-        "navigationBarTitleText": "Koko Box"
+        "navigationBarTitleText": "Koko Box",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
       }
     }
   ],
