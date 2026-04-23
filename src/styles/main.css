@@ -1304,6 +1304,11 @@ button {
   padding-bottom: 72px;
 }
 
+.home-page-with-chat-fab {
+  position: relative;
+  padding-bottom: 88px;
+}
+
 .chat-fab {
   position: fixed;
   right: 26px;
@@ -1319,6 +1324,21 @@ button {
   font-size: 0.98rem;
   font-weight: 900;
   box-shadow: 0 16px 24px rgba(107, 207, 176, 0.36);
+}
+
+.chat-fab--icon {
+  padding: 0;
+  overflow: hidden;
+}
+
+.chat-fab--icon::after {
+  border: 0;
+}
+
+.chat-fab__icon {
+  width: 28px;
+  height: 28px;
+  display: block;
 }
 
 .profile-shortcuts {
@@ -1830,6 +1850,11 @@ button {
 
   .profile-retry-button {
     width: 100%;
+  }
+
+  .chat-fab {
+    right: 18px;
+    bottom: calc(84px + env(safe-area-inset-bottom));
   }
 }
 

@@ -1,0 +1,124 @@
+<template name="townPage">
+  <view class="town-page">
+    <view class="town-hero">
+      <view class="town-hero__eyebrow">Koko Town</view>
+      <view class="town-hero__title">宠物小镇</view>
+      <view class="town-hero__copy">中心喷泉连起了小屋、商店和任务屋，点击地图可以带团子在广场间散步。</view>
+    </view>
+
+    <view id="town-map" class="town-map" bindtap="handleMapTap">
+      <view class="town-map__sky-glow"></view>
+      <view class="town-map__cloudbank town-map__cloudbank--left"></view>
+      <view class="town-map__cloudbank town-map__cloudbank--right"></view>
+      <view class="town-map__treeline"></view>
+      <view class="town-map__plaza-shadow"></view>
+      <view class="town-map__grass-shadow town-map__grass-shadow--left"></view>
+      <view class="town-map__grass-shadow town-map__grass-shadow--right"></view>
+
+      <view class="town-map__path town-map__path--left"></view>
+      <view class="town-map__path town-map__path--right"></view>
+      <view class="town-map__path town-map__path--bottom"></view>
+      <view class="town-map__path town-map__path--ring"></view>
+      <view class="town-map__path-dots town-map__path-dots--left"></view>
+      <view class="town-map__path-dots town-map__path-dots--right"></view>
+      <view class="town-map__path-dots town-map__path-dots--bottom"></view>
+
+      <view wx:for="{{pennants}}" wx:key="key" class="pennant pennant--{{item.tone}}" style="{{item.style}}">
+        <view class="pennant__string"></view>
+        <view class="pennant__flag"></view>
+      </view>
+
+      <view wx:for="{{grassPatches}}" wx:key="key" class="grass-patch" style="{{item.style}}"></view>
+
+      <view wx:for="{{trees}}" wx:key="key" class="tree tree--decor" style="{{item.style}}">
+        <view class="tree__shadow"></view>
+        <view class="tree__trunk"></view>
+        <view class="tree__crown tree__crown--back"></view>
+        <view class="tree__crown tree__crown--front"></view>
+      </view>
+
+      <view
+        wx:for="{{locations}}"
+        wx:key="name"
+        class="location location--{{item.name}} {{activeLocation === item.name ? 'location--active' : ''}}"
+        style="{{item.style}}"
+        data-name="{{item.name}}"
+        catchtap="handleLocationTap"
+      >
+        <view wx:if="{{item.name === 'home'}}" class="building building--home">
+          <view class="building__shadow"></view>
+          <view class="building__roof"></view>
+          <view class="building__body"></view>
+          <view class="building__door"></view>
+          <view class="building__window building__window--left"></view>
+          <view class="building__window building__window--right"></view>
+          <view class="building__label">{{item.label}}</view>
+        </view>
+
+        <view wx:if="{{item.name === 'shop'}}" class="building building--shop">
+          <view class="building__shadow"></view>
+          <view class="building__roof"></view>
+          <view class="building__awning"></view>
+          <view class="building__body"></view>
+          <view class="building__window building__window--left"></view>
+          <view class="building__window building__window--right"></view>
+          <view class="building__counter"></view>
+          <view class="building__label">{{item.label}}</view>
+        </view>
+
+        <view wx:if="{{item.name === 'square'}}" class="square">
+          <view class="square__shadow"></view>
+          <view class="square__platform"></view>
+          <view class="square__tile square__tile--one"></view>
+          <view class="square__tile square__tile--two"></view>
+          <view class="square__tile square__tile--three"></view>
+          <view class="square__ring"></view>
+          <view class="square__fountain-base"></view>
+          <view class="square__fountain-water"></view>
+          <view class="square__fountain-core"></view>
+          <view class="square__ripple square__ripple--one"></view>
+          <view class="square__ripple square__ripple--two"></view>
+          <view class="square__fountain-jet square__fountain-jet--left"></view>
+          <view class="square__fountain-jet square__fountain-jet--center"></view>
+          <view class="square__fountain-jet square__fountain-jet--right"></view>
+          <view class="building__label building__label--square">{{item.label}}</view>
+        </view>
+
+        <view wx:if="{{item.name === 'task_house'}}" class="building building--task">
+          <view class="building__shadow"></view>
+          <view class="building__roof"></view>
+          <view class="building__body"></view>
+          <view class="building__board"></view>
+          <view class="building__door"></view>
+          <view class="building__window building__window--left"></view>
+          <view class="building__window building__window--right"></view>
+          <view class="building__label">{{item.label}}</view>
+        </view>
+      </view>
+
+      <view wx:for="{{flowers}}" wx:key="key" class="flower flower--{{item.tone}}" style="{{item.style}}">
+        <view class="flower__center"></view>
+        <view class="flower__petal flower__petal--top"></view>
+        <view class="flower__petal flower__petal--right"></view>
+        <view class="flower__petal flower__petal--bottom"></view>
+        <view class="flower__petal flower__petal--left"></view>
+      </view>
+
+      <view wx:for="{{stones}}" wx:key="key" class="stone stone--{{item.size}}" style="{{item.style}}"></view>
+
+      <view wx:if="{{activeLocation}}" class="town-map__toast">{{activeLocation}}</view>
+
+      <pet
+        wx:for="{{pets}}"
+        wx:key="id"
+        x="{{item.x}}"
+        y="{{item.y}}"
+        scale="{{item.scale}}"
+        mood="{{item.mood}}"
+        variant="map"
+      ></pet>
+
+      <view class="town-map__hint">点击草地移动宠物，点击建筑查看位置名称</view>
+    </view>
+  </view>
+</template>

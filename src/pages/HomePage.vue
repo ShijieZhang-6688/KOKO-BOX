@@ -10,6 +10,7 @@ const { pet, carePet } = useKokoState()
 const showGrowthPopup = ref(false)
 const petPose = ref<'idle' | 'wave' | 'snack' | 'sleep'>('idle')
 const petBubble = ref('Tap Koko to say hi.')
+const chatFabIcon = '/static/tab/tab-talk-active.png'
 
 let poseTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -106,7 +107,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <view class="page-view">
+  <view class="page-view home-page-with-chat-fab">
     <view class="page-head">
       <view>
         <view class="eyebrow">宠物主界面</view>
@@ -203,6 +204,10 @@ onBeforeUnmount(() => {
         </view>
       </view>
     </view>
+
+    <button class="chat-fab chat-fab--icon" @click="openPage('/pages/chat/index')">
+      <image class="chat-fab__icon" :src="chatFabIcon" mode="aspectFit" />
+    </button>
 
     <view v-if="showGrowthPopup" class="overlay-mask" @click="showGrowthPopup = false">
       <view class="overlay-card" @click.stop>

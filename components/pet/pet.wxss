@@ -1,0 +1,383 @@
+.pet-root {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  transform-origin: center bottom;
+}
+
+.pet-image-frame {
+  width: 420rpx;
+  min-height: 440rpx;
+  padding: 20rpx 16rpx 0;
+  border-radius: 56rpx;
+  background: linear-gradient(180deg, rgba(255, 248, 243, 0.96), rgba(255, 243, 238, 0.82));
+  box-shadow: inset 0 2rpx 0 rgba(255, 255, 255, 0.7);
+}
+
+.home-pet-placeholder {
+  width: 100%;
+  min-height: 420rpx;
+  border-radius: 44rpx;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12)),
+    repeating-linear-gradient(
+      135deg,
+      rgba(216, 198, 188, 0.16) 0,
+      rgba(216, 198, 188, 0.16) 24rpx,
+      rgba(255, 255, 255, 0.08) 24rpx,
+      rgba(255, 255, 255, 0.08) 48rpx
+    );
+  border: 2rpx dashed rgba(143, 126, 117, 0.28);
+}
+
+.pet-stage {
+  min-height: 420rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20rpx 0 28rpx;
+}
+
+.pet-stage > view,
+.pet-stage > button {
+  margin-top: 24rpx;
+}
+
+.pet-stage > view:first-child {
+  margin-top: 0;
+}
+
+.pet-bubble {
+  max-width: 540rpx;
+  padding: 20rpx 28rpx;
+  border-radius: 32rpx;
+  background: rgba(255, 255, 255, 0.78);
+  color: #1f2a44;
+  line-height: 1.4;
+  text-align: center;
+  border: 2rpx solid rgba(143, 126, 117, 0.16);
+  box-shadow: 0 20rpx 36rpx rgba(84, 102, 149, 0.08);
+  font-size: 24rpx;
+}
+
+.pet-shell-button {
+  padding: 0;
+  background: transparent;
+  line-height: 1;
+}
+
+.pet-shell-button::after {
+  border: 0;
+}
+
+.pet-shell {
+  position: relative;
+  width: 360rpx;
+  height: 300rpx;
+}
+
+.pet-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 12rpx;
+  width: 192rpx;
+  height: 32rpx;
+  border-radius: 999rpx;
+  background: rgba(94, 108, 138, 0.12);
+  transform: translateX(-50%);
+}
+
+.pet-body {
+  position: absolute;
+  left: 50%;
+  bottom: 36rpx;
+  width: 224rpx;
+  height: 204rpx;
+  border-radius: 92rpx 92rpx 80rpx 80rpx;
+  background: linear-gradient(180deg, #fff9f3 0%, #ffe7da 68%, #ffd7ca 100%);
+  border: 6rpx solid rgba(120, 107, 118, 0.3);
+  transform: translateX(-50%);
+  box-shadow:
+    inset 0 -20rpx 32rpx rgba(255, 193, 181, 0.28),
+    0 28rpx 44rpx rgba(84, 102, 149, 0.1);
+}
+
+.pet-face {
+  position: absolute;
+  inset: 36rpx 32rpx 36rpx;
+  border-radius: 68rpx;
+  background: radial-gradient(circle at top, rgba(255, 255, 255, 0.9), rgba(255, 244, 236, 0.92));
+}
+
+.pet-ear {
+  position: absolute;
+  top: -28rpx;
+  width: 60rpx;
+  height: 84rpx;
+  border-radius: 36rpx 36rpx 20rpx 20rpx;
+  background: linear-gradient(180deg, #ffd6dc 0%, #ffbcc9 100%);
+  border: 6rpx solid rgba(120, 107, 118, 0.24);
+  transform-origin: bottom center;
+}
+
+.pet-ear--left {
+  left: 28rpx;
+  transform: rotate(-20deg);
+}
+
+.pet-ear--right {
+  right: 28rpx;
+  transform: rotate(20deg);
+}
+
+.pet-eye {
+  position: absolute;
+  top: 52rpx;
+  width: 20rpx;
+  height: 28rpx;
+  border-radius: 999rpx;
+  background: #45506c;
+}
+
+.pet-eye--left {
+  left: 44rpx;
+}
+
+.pet-eye--right {
+  right: 44rpx;
+}
+
+.pet-blush {
+  position: absolute;
+  top: 76rpx;
+  width: 36rpx;
+  height: 20rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 175, 185, 0.42);
+}
+
+.pet-blush--left {
+  left: 16rpx;
+}
+
+.pet-blush--right {
+  right: 16rpx;
+}
+
+.pet-mouth {
+  position: absolute;
+  left: 50%;
+  top: 96rpx;
+  width: 36rpx;
+  height: 20rpx;
+  border-bottom: 6rpx solid #d58993;
+  border-radius: 0 0 36rpx 36rpx;
+  transform: translateX(-50%);
+}
+
+.pet-tail {
+  position: absolute;
+  right: 52rpx;
+  bottom: 108rpx;
+  width: 88rpx;
+  height: 36rpx;
+  border-radius: 999rpx;
+  border: 6rpx solid rgba(120, 107, 118, 0.28);
+  background: linear-gradient(90deg, #ffe6dc, #ffd4c4);
+  transform-origin: left center;
+}
+
+.pet-arm,
+.pet-foot {
+  position: absolute;
+  background: linear-gradient(180deg, #ffe9e2 0%, #ffd5c9 100%);
+  border: 6rpx solid rgba(120, 107, 118, 0.2);
+}
+
+.pet-arm {
+  top: 108rpx;
+  width: 40rpx;
+  height: 68rpx;
+  border-radius: 999rpx;
+}
+
+.pet-arm--left {
+  left: -16rpx;
+  transform: rotate(20deg);
+}
+
+.pet-arm--right {
+  right: -16rpx;
+  transform: rotate(-20deg);
+}
+
+.pet-foot {
+  bottom: -16rpx;
+  width: 48rpx;
+  height: 32rpx;
+  border-radius: 999rpx;
+}
+
+.pet-foot--left {
+  left: 48rpx;
+}
+
+.pet-foot--right {
+  right: 48rpx;
+}
+
+.pet-action-row {
+  display: flex;
+  gap: 16rpx;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pet-action-pill {
+  min-height: 68rpx;
+  padding: 0 24rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1f2a44;
+  border: 2rpx solid rgba(143, 126, 117, 0.16);
+  box-shadow: 0 16rpx 28rpx rgba(84, 102, 149, 0.06);
+  font-size: 24rpx;
+  line-height: 68rpx;
+}
+
+.pet-action-pill::after {
+  border: 0;
+}
+
+.pet-root--map .pet-action-row {
+  display: none;
+}
+
+.pet-root--map .pet-image-frame,
+.pet-root--map .home-pet-placeholder {
+  width: auto;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pet-root--map .pet-stage {
+  min-height: 248rpx;
+}
+
+.pet-root--map .pet-bubble {
+  max-width: 240rpx;
+  padding: 14rpx 18rpx;
+  font-size: 22rpx;
+}
+
+.pet-root--map .pet-shell {
+  width: 240rpx;
+  height: 210rpx;
+}
+
+.pet-shell--idle .pet-body {
+  animation: pet-float 2.8s ease-in-out infinite;
+}
+
+.pet-shell--idle .pet-tail {
+  animation: pet-tail-sway 2.1s ease-in-out infinite;
+}
+
+.pet-shell--wave .pet-arm--right {
+  animation: pet-wave 0.7s ease-in-out infinite;
+}
+
+.pet-shell--wave .pet-tail {
+  animation: pet-tail-sway 0.8s ease-in-out infinite;
+}
+
+.pet-shell--snack .pet-mouth {
+  animation: pet-nibble 0.45s ease-in-out infinite;
+}
+
+.pet-shell--snack .pet-eye {
+  transform: scaleY(0.72);
+}
+
+.pet-shell--sleep .pet-eye {
+  height: 6rpx;
+  top: 64rpx;
+}
+
+.pet-shell--sleep .pet-mouth {
+  width: 24rpx;
+  border-bottom-width: 4rpx;
+}
+
+.pet-shell--sleep .pet-body {
+  animation: pet-float 3.2s ease-in-out infinite;
+}
+
+.pet--happy .pet-bubble {
+  background: rgba(255, 252, 240, 0.9);
+}
+
+.pet--happy .pet-body {
+  box-shadow:
+    inset 0 -20rpx 32rpx rgba(255, 193, 181, 0.28),
+    0 28rpx 44rpx rgba(255, 198, 154, 0.16);
+}
+
+.pet--sad .pet-bubble {
+  background: rgba(244, 246, 251, 0.9);
+  color: #62708c;
+}
+
+.pet--sad .pet-tail {
+  opacity: 0.7;
+}
+
+.pet--sad .pet-blush {
+  opacity: 0.45;
+}
+
+@keyframes pet-float {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-12rpx);
+  }
+}
+
+@keyframes pet-tail-sway {
+  0%,
+  100% {
+    transform: rotate(16deg);
+  }
+  50% {
+    transform: rotate(-10deg);
+  }
+}
+
+@keyframes pet-wave {
+  0%,
+  100% {
+    transform: rotate(-26deg);
+  }
+  50% {
+    transform: rotate(-58deg);
+  }
+}
+
+@keyframes pet-nibble {
+  0%,
+  100% {
+    transform: translateX(-50%) scaleY(1);
+  }
+  50% {
+    transform: translateX(-50%) scaleY(0.45);
+  }
+}

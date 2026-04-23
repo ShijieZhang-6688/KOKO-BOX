@@ -1,0 +1,50 @@
+<view
+  class="pet-root pet--{{mood}} pet-root--{{variant}}"
+  style="{{containerStyle}}"
+  catchtap="noop"
+>
+  <view class="pet-image-frame">
+    <view class="home-pet-placeholder">
+      <view class="pet-stage">
+        <view class="pet-bubble">{{bubbleText}}</view>
+
+        <button class="pet-shell-button" bindtap="handlePetTap">
+          <view class="pet-shell pet-shell--{{pose}}">
+            <view class="pet-shadow"></view>
+            <view class="pet-tail"></view>
+
+            <view class="pet-body">
+              <view class="pet-ear pet-ear--left"></view>
+              <view class="pet-ear pet-ear--right"></view>
+
+              <view class="pet-face">
+                <view class="pet-blush pet-blush--left"></view>
+                <view class="pet-blush pet-blush--right"></view>
+                <view class="pet-eye pet-eye--left"></view>
+                <view class="pet-eye pet-eye--right"></view>
+                <view class="pet-mouth"></view>
+              </view>
+
+              <view class="pet-arm pet-arm--left"></view>
+              <view class="pet-arm pet-arm--right"></view>
+              <view class="pet-foot pet-foot--left"></view>
+              <view class="pet-foot pet-foot--right"></view>
+            </view>
+          </view>
+        </button>
+
+        <view class="pet-action-row">
+          <button
+            wx:for="{{petActions}}"
+            wx:key="key"
+            class="pet-action-pill"
+            data-action="{{item.key}}"
+            bindtap="handleActionTap"
+          >
+            {{item.label}}
+          </button>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

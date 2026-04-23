@@ -1,1 +1,5 @@
-<view></view>
+<import src="./town.wxml" />
+<template
+  is="townPage"
+  data="{{pets: pets, locations: locations, trees: trees, flowers: flowers, stones: stones, grassPatches: grassPatches}}"
+/>

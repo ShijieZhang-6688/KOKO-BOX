@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { useKokoState } from '../composables/useKokoState'
-import { useLanguage } from '../composables/useLanguage'
 
-const { t } = useLanguage()
 const { pet, carePet } = useKokoState()
 
 const games = [
@@ -10,10 +8,6 @@ const games = [
   { title: '团子小游戏', effect: '提升心情 +8' },
   { title: '轻松散步', effect: '提升精力 +5' },
 ]
-
-const openPage = (url: string) => {
-  uni.navigateTo({ url })
-}
 </script>
 
 <template>
@@ -34,7 +28,6 @@ const openPage = (url: string) => {
           <button class="quick-action-button" @click="carePet('play')">一起玩耍</button>
           <button class="quick-action-button" @click="carePet('feedSnack')">奖励零食</button>
           <button class="quick-action-button" @click="carePet('rest')">放松休息</button>
-          <button class="quick-action-button quick-action-button--ghost" @click="openPage('/pages/chat/index')">进入 AI 聊天</button>
         </view>
       </view>
 
@@ -66,7 +59,7 @@ const openPage = (url: string) => {
         <view>宠物小镇入口</view>
         <view class="muted-line">进入宠物小镇，解锁更多场景互动和后续扩展玩法。</view>
         <view class="action-stack">
-          <button class="quick-action-button" @click="openPage('/pages/town/index')">进入宠物小镇</button>
+          <button class="quick-action-button" @click="uni.navigateTo({ url: '/pages/town/index' })">进入宠物小镇</button>
         </view>
       </view>
     </view>
