@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import PetLottieAvatar from '../components/PetLottieAvatar.vue'
 import PetMiniGameDrawer from '../components/PetMiniGameDrawer.vue'
 import { useKokoState } from '../composables/useKokoState'
 import type { MiniGameResult, PetActionType } from '../types/koko'
 
 const FRAME_COUNT = 16
 const STEP_PX = 18
+const PET_LOTTIE_SIZE_RPX = 300
+const homeBackgroundSrc = '/static/home/room.webp'
 
 const {
   pet,
@@ -86,7 +89,8 @@ const lastAssistantMessage = computed(() => {
 })
 
 const overlayChatCollapsed = computed(() => historyOpen.value || gameDrawerOpen.value)
-const petFacingScale = computed(() => (rotationFrame.value > 7 ? -1 : 1))
+const shouldShowPetLottie = computed(() => !gameDrawerOpen.value && !historyOpen.value)
+const petFacingMirrored = computed(() => rotationFrame.value > 7)
 
 const careActions: Array<{
   key: 'feedMeal' | 'feedWater' | 'play' | 'clean'
@@ -268,24 +272,7 @@ onBeforeUnmount(() => {
 <template>
   <view class="home-screen">
     <view class="home-screen__background">
-      <view class="sky-glow sky-glow--left" />
-      <view class="sky-glow sky-glow--right" />
-      <view class="cloud cloud--one" />
-      <view class="cloud cloud--two" />
-      <view class="mountain mountain--back" />
-      <view class="mountain mountain--front" />
-      <view class="tree tree--left">
-        <view class="tree__crown" />
-        <view class="tree__trunk" />
-      </view>
-      <view class="tree tree--right">
-        <view class="tree__crown" />
-        <view class="tree__trunk" />
-      </view>
-      <view class="hill hill--one" />
-      <view class="hill hill--two" />
-      <view class="flowers flowers--left" />
-      <view class="flowers flowers--right" />
+      <image class="home-screen__background-image" :src="homeBackgroundSrc" mode="scaleToFill" />
     </view>
 
     <view class="home-screen__content">
@@ -343,34 +330,8 @@ onBeforeUnmount(() => {
             <view class="pet-model-stage__platform" />
             <view class="pet-model-stage__hint">{{ dragging ? 'Drag' : 'Swipe' }}</view>
 
-            <view class="pet-cat" :class="`pet-cat--${petAction}`" :style="{ transform: `scaleX(${petFacingScale})` }">
-              <view class="pet-cat__tail" />
-              <view class="pet-cat__body">
-                <view class="pet-cat__belly" />
-                <view class="pet-cat__paw pet-cat__paw--left" />
-                <view class="pet-cat__paw pet-cat__paw--right" />
-              </view>
-              <view class="pet-cat__head">
-                <view class="pet-cat__ear pet-cat__ear--left">
-                  <view class="pet-cat__ear-inner" />
-                </view>
-                <view class="pet-cat__ear pet-cat__ear--right">
-                  <view class="pet-cat__ear-inner" />
-                </view>
-                <view class="pet-cat__patch pet-cat__patch--left" />
-                <view class="pet-cat__patch pet-cat__patch--right" />
-                <view class="pet-cat__eye pet-cat__eye--left" />
-                <view class="pet-cat__eye pet-cat__eye--right" />
-                <view class="pet-cat__blush pet-cat__blush--left" />
-                <view class="pet-cat__blush pet-cat__blush--right" />
-                <view class="pet-cat__nose" />
-                <view class="pet-cat__mouth" />
-                <view class="pet-cat__whiskers pet-cat__whiskers--left" />
-                <view class="pet-cat__whiskers pet-cat__whiskers--right" />
-              </view>
-              <view class="pet-cat__collar">
-                <view class="pet-cat__bell" />
-              </view>
+            <view v-if="shouldShowPetLottie" class="pet-lottie-wrap">
+              <PetLottieAvatar :size-rpx="PET_LOTTIE_SIZE_RPX" :mirror="petFacingMirrored" />
             </view>
           </view>
         </view>
@@ -460,6 +421,13 @@ onBeforeUnmount(() => {
   inset: 0;
   overflow: hidden;
   position: absolute;
+  z-index: 0;
+}
+
+.home-screen__background-image {
+  display: block;
+  height: 100%;
+  width: 100%;
 }
 
 .home-screen__content {
@@ -722,7 +690,7 @@ onBeforeUnmount(() => {
   max-width: 390rpx;
   padding: 18rpx 22rpx;
   position: absolute;
-  top: 0;
+  top: 170rpx;
   z-index: 6;
 }
 
@@ -801,6 +769,7 @@ onBeforeUnmount(() => {
   bottom: 154rpx;
   left: 0;
   min-height: 420rpx;
+  overflow: hidden;
   position: absolute;
   right: 144rpx;
   top: 166rpx;
@@ -815,7 +784,7 @@ onBeforeUnmount(() => {
   right: 0;
   top: 102rpx;
   width: 120rpx;
-  z-index: 4;
+  z-index: 8;
 }
 
 .home-action-pill {
@@ -854,7 +823,7 @@ onBeforeUnmount(() => {
   position: absolute;
   transform: translateX(-50%);
   width: 470rpx;
-  z-index: 6;
+  z-index: 9;
 }
 
 .pet-model-stage {
@@ -894,6 +863,23 @@ onBeforeUnmount(() => {
   padding: 10rpx 18rpx;
   position: absolute;
   transform: translateX(-50%);
+}
+
+.pet-lottie-wrap {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  margin-top: 18rpx;
+  overflow: hidden;
+  width: 100%;
+  z-index: 2;
+}
+
+.pet-lottie {
+  height: 600rpx;
+  position: relative;
+  width: 600rpx;
 }
 
 .pet-cat {
