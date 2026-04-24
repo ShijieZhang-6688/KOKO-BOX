@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import { useKokoState } from '../composables/useKokoState'
 
 interface FallingBall {
@@ -15,15 +15,11 @@ const isRunning = ref(false)
 const score = ref(0)
 const timeLeft = ref(25)
 const balls = ref<FallingBall[]>([])
-const summary = ref('点击开始，帮宠物把落下来的球接住。')
+const summary = ref('点击开始，帮可可把落下来的小球接住。')
 
 let spawnTimer: ReturnType<typeof setInterval> | undefined
 let moveTimer: ReturnType<typeof setInterval> | undefined
 let countdownTimer: ReturnType<typeof setInterval> | undefined
-
-const stageStyle = computed(() => ({ height: '520rpx' }))
-
-const createId = () => `ball-${Math.random().toString(36).slice(2, 8)}`
 
 const clearTimers = () => {
   if (spawnTimer) clearInterval(spawnTimer)
@@ -43,17 +39,7 @@ const finishGame = () => {
     bonusMood: score.value >= 16 ? 4 : 0,
     bonusIntimacy: score.value >= 12 ? 3 : 0,
   })
-  summary.value = score.value >= 14 ? '接得很稳，Koko 开心得想转圈。' : '这一局结束啦，再来一轮会更熟练。'
-}
-
-const goBack = () => {
-  uni.navigateBack()
-}
-
-const tickBalls = () => {
-  balls.value = balls.value
-    .map((ball) => ({ ...ball, top: ball.top + ball.speed }))
-    .filter((ball) => ball.top < 88)
+  summary.value = score.value >= 14 ? '接得很稳，可可高兴得想转圈。' : '这一局结束啦，再来一次会更熟练。'
 }
 
 const startGame = () => {
@@ -62,13 +48,13 @@ const startGame = () => {
   score.value = 0
   timeLeft.value = 25
   balls.value = []
-  summary.value = '快点点住下落的小球，帮 Koko 接住它们。'
+  summary.value = '快点点住下落的小球，帮可可接住它们。'
 
   spawnTimer = setInterval(() => {
     balls.value = [
       ...balls.value,
       {
-        id: createId(),
+        id: `ball-${Math.random().toString(36).slice(2, 8)}`,
         left: Math.floor(Math.random() * 76) + 4,
         top: 0,
         speed: 4 + Math.random() * 3,
@@ -77,7 +63,9 @@ const startGame = () => {
   }, 650)
 
   moveTimer = setInterval(() => {
-    tickBalls()
+    balls.value = balls.value
+      .map((ball) => ({ ...ball, top: ball.top + ball.speed }))
+      .filter((ball) => ball.top < 88)
   }, 120)
 
   countdownTimer = setInterval(() => {
@@ -94,33 +82,37 @@ const catchBall = (id: string) => {
   score.value += 2
 }
 
+const goBack = () => {
+  uni.navigateBack()
+}
+
 onBeforeUnmount(() => {
   clearTimers()
 })
 </script>
 
 <template>
-  <view class="page-view pet-game-page">
-    <view class="page-head">
+  <view class="pet-game-page">
+    <view class="pet-game-page__head">
       <view>
-        <view class="eyebrow">小游戏</view>
-        <view>点击接球</view>
+        <view class="pet-game-page__eyebrow">小游戏</view>
+        <view class="pet-game-page__title">点击接球</view>
       </view>
-      <view>{{ timeLeft }}s</view>
+      <view class="pet-game-page__time">{{ timeLeft }}s</view>
     </view>
 
-    <view class="pet-game-scorebar">
-      <view class="pet-game-scorecard">
+    <view class="pet-game-page__scorebar">
+      <view class="pet-game-page__scorecard">
         <view>当前分数</view>
         <view>{{ score }}</view>
       </view>
-      <view class="pet-game-scorecard">
+      <view class="pet-game-page__scorecard">
         <view>本局目标</view>
         <view>16+</view>
       </view>
     </view>
 
-    <view class="pet-game-stage pet-game-stage--catch" :style="stageStyle">
+    <view class="pet-game-stage">
       <button
         v-for="ball in balls"
         :key="ball.id"
@@ -128,16 +120,147 @@ onBeforeUnmount(() => {
         :style="{ left: `${ball.left}%`, top: `${ball.top}%` }"
         @click="catchBall(ball.id)"
       />
-      <view class="pet-game-pet pet-game-pet--catch" />
+      <view class="pet-game-pet" />
     </view>
 
     <view class="pet-game-summary">{{ summary }}</view>
 
-    <view class="pet-game-actions">
-      <button class="quick-action-button" @click="startGame">
-        {{ isRunning ? '重新开始' : '开始游戏' }}
-      </button>
-      <button class="quick-action-button quick-action-button--ghost" @click="goBack">返回首页</button>
+    <view class="pet-game-page__actions">
+      <button class="pet-game-page__primary" @click="startGame">{{ isRunning ? '重新开始' : '开始游戏' }}</button>
+      <button class="pet-game-page__ghost" @click="goBack">返回首页</button>
     </view>
   </view>
 </template>
+
+<style scoped>
+.pet-game-page {
+  background: linear-gradient(180deg, #e5f7ff 0%, #edfbe6 100%);
+  min-height: 100vh;
+  padding: calc(32rpx + env(safe-area-inset-top)) 28rpx 40rpx;
+}
+
+.pet-game-page__head,
+.pet-game-page__scorebar,
+.pet-game-page__actions {
+  display: flex;
+}
+
+.pet-game-page__head,
+.pet-game-page__actions {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pet-game-page__eyebrow {
+  color: #6b99a8;
+  font-size: 22rpx;
+  letter-spacing: 3rpx;
+}
+
+.pet-game-page__title {
+  color: #234555;
+  font-size: 38rpx;
+  font-weight: 700;
+  margin-top: 8rpx;
+}
+
+.pet-game-page__time {
+  color: #30586a;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.pet-game-page__scorebar {
+  gap: 18rpx;
+  margin: 28rpx 0 22rpx;
+}
+
+.pet-game-page__scorecard {
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 28rpx;
+  color: #31586b;
+  flex: 1;
+  font-size: 24rpx;
+  padding: 22rpx;
+}
+
+.pet-game-page__scorecard view:last-child {
+  font-size: 36rpx;
+  font-weight: 700;
+  margin-top: 10rpx;
+}
+
+.pet-game-stage {
+  background: linear-gradient(180deg, #dff4ff 0%, #dff5da 70%, #bde7ad 100%);
+  border-radius: 32rpx;
+  height: 560rpx;
+  overflow: hidden;
+  position: relative;
+}
+
+.pet-game-ball,
+.pet-game-page__primary,
+.pet-game-page__ghost {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pet-game-ball::after,
+.pet-game-page__primary::after,
+.pet-game-page__ghost::after {
+  border: none;
+}
+
+.pet-game-ball {
+  background: radial-gradient(circle at 30% 30%, #fff, #fff6e4 22%, #ffbf72 56%, #ff9658 100%);
+  border-radius: 50%;
+  box-shadow: 0 10rpx 18rpx rgba(236, 132, 69, 0.28);
+  height: 46rpx;
+  position: absolute;
+  width: 46rpx;
+}
+
+.pet-game-pet {
+  background: linear-gradient(180deg, #fffdf0 0%, #ffe3af 100%);
+  border-radius: 46% 46% 42% 42%;
+  bottom: 44rpx;
+  height: 138rpx;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 126rpx;
+}
+
+.pet-game-summary {
+  color: #355d71;
+  font-size: 26rpx;
+  line-height: 1.65;
+  margin-top: 22rpx;
+  min-height: 84rpx;
+}
+
+.pet-game-page__actions {
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.pet-game-page__primary,
+.pet-game-page__ghost {
+  border-radius: 999rpx;
+  flex: 1;
+  font-size: 28rpx;
+  padding: 22rpx 0;
+}
+
+.pet-game-page__primary {
+  background: linear-gradient(135deg, #f8cc67, #ff9d64);
+  color: #4d3219;
+  font-weight: 700;
+}
+
+.pet-game-page__ghost {
+  background: rgba(255, 255, 255, 0.78);
+  color: #4b6f84;
+}
+</style>

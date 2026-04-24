@@ -27,8 +27,18 @@ export type PetActionType =
   | 'sip'
   | 'sparkle'
 export type MiniGameType = 'catch' | 'bubble'
+export type CareActionKey = 'feedMeal' | 'feedSnack' | 'feedWater' | 'clean' | 'heal' | 'rest' | 'play'
 export type DeviceType = 'miniapp' | 'desktop' | 'm5'
 export type SyncStatus = 'success' | 'offline' | 'retrying'
+export type FacingDirection =
+  | 'front'
+  | 'front-left'
+  | 'left'
+  | 'back-left'
+  | 'back'
+  | 'back-right'
+  | 'right'
+  | 'front-right'
 
 export interface Pet {
   id: string
@@ -42,6 +52,12 @@ export interface Pet {
   energy: number
   intimacy: number
   clean: number
+  lastFedAt?: string
+  digestingUntil?: string
+  activeMiniGame?: MiniGameType | null
+  homeSceneMood?: string
+  rotationFrame?: number
+  facingDirection?: FacingDirection
   updatedAt: string
 }
 
@@ -154,4 +170,11 @@ export interface MiniGameResult {
   bonusIntimacy?: number
   bonusEnergy?: number
   bonusClean?: number
+}
+
+export interface CareActionResult {
+  action: CareActionKey
+  success: boolean
+  message: string
+  blockedUntil?: string
 }

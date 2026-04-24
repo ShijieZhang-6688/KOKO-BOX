@@ -16,13 +16,11 @@ const isRunning = ref(false)
 const score = ref(0)
 const timeLeft = ref(20)
 const bubbles = ref<BubbleItem[]>([])
-const summary = ref('点开始后，戳破 Koko 吐出来的泡泡。')
+const summary = ref('点击开始后，戳破可可吹起来的泡泡。')
 
 let spawnTimer: ReturnType<typeof setInterval> | undefined
 let moveTimer: ReturnType<typeof setInterval> | undefined
 let countdownTimer: ReturnType<typeof setInterval> | undefined
-
-const createId = () => `bubble-${Math.random().toString(36).slice(2, 8)}`
 
 const clearTimers = () => {
   if (spawnTimer) clearInterval(spawnTimer)
@@ -42,11 +40,7 @@ const finishGame = () => {
     bonusMood: score.value >= 18 ? 5 : 0,
     bonusClean: score.value >= 12 ? 2 : 0,
   })
-  summary.value = score.value >= 18 ? '泡泡全都被你戳破了，Koko 兴奋得直摇尾巴。' : '这一轮已经结束，下一局可以再快一点。'
-}
-
-const goBack = () => {
-  uni.navigateBack()
+  summary.value = score.value >= 18 ? '泡泡都被你戳破了，可可开心得直晃尾巴。' : '这一轮已经结束，下一局可以再快一点。'
 }
 
 const startGame = () => {
@@ -61,7 +55,7 @@ const startGame = () => {
     bubbles.value = [
       ...bubbles.value,
       {
-        id: createId(),
+        id: `bubble-${Math.random().toString(36).slice(2, 8)}`,
         left: Math.floor(Math.random() * 72) + 8,
         bottom: 18,
         speed: 4 + Math.random() * 2,
@@ -90,27 +84,31 @@ const popBubble = (id: string) => {
   score.value += 1
 }
 
+const goBack = () => {
+  uni.navigateBack()
+}
+
 onBeforeUnmount(() => {
   clearTimers()
 })
 </script>
 
 <template>
-  <view class="page-view pet-game-page">
-    <view class="page-head">
+  <view class="pet-game-page">
+    <view class="pet-game-page__head">
       <view>
-        <view class="eyebrow">小游戏</view>
-        <view>戳泡泡</view>
+        <view class="pet-game-page__eyebrow">小游戏</view>
+        <view class="pet-game-page__title">戳泡泡</view>
       </view>
-      <view>{{ timeLeft }}s</view>
+      <view class="pet-game-page__time">{{ timeLeft }}s</view>
     </view>
 
-    <view class="pet-game-scorebar">
-      <view class="pet-game-scorecard">
+    <view class="pet-game-page__scorebar">
+      <view class="pet-game-page__scorecard">
         <view>当前分数</view>
         <view>{{ score }}</view>
       </view>
-      <view class="pet-game-scorecard">
+      <view class="pet-game-page__scorecard">
         <view>本局目标</view>
         <view>18+</view>
       </view>
@@ -120,20 +118,149 @@ onBeforeUnmount(() => {
       <button
         v-for="bubble in bubbles"
         :key="bubble.id"
-        class="pet-game-bubble-button"
+        class="pet-game-bubble"
         :style="{ left: `${bubble.left}%`, bottom: `${bubble.bottom}%`, width: `${bubble.size}rpx`, height: `${bubble.size}rpx` }"
         @click="popBubble(bubble.id)"
       />
-      <view class="pet-game-pet pet-game-pet--bubble" />
+      <view class="pet-game-pet" />
     </view>
 
     <view class="pet-game-summary">{{ summary }}</view>
 
-    <view class="pet-game-actions">
-      <button class="quick-action-button" @click="startGame">
-        {{ isRunning ? '重新开始' : '开始游戏' }}
-      </button>
-      <button class="quick-action-button quick-action-button--ghost" @click="goBack">返回首页</button>
+    <view class="pet-game-page__actions">
+      <button class="pet-game-page__primary" @click="startGame">{{ isRunning ? '重新开始' : '开始游戏' }}</button>
+      <button class="pet-game-page__ghost" @click="goBack">返回首页</button>
     </view>
   </view>
 </template>
+
+<style scoped>
+.pet-game-page {
+  background: linear-gradient(180deg, #e5f8ff 0%, #eefbe8 100%);
+  min-height: 100vh;
+  padding: calc(32rpx + env(safe-area-inset-top)) 28rpx 40rpx;
+}
+
+.pet-game-page__head,
+.pet-game-page__scorebar,
+.pet-game-page__actions {
+  display: flex;
+}
+
+.pet-game-page__head,
+.pet-game-page__actions {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pet-game-page__eyebrow {
+  color: #6b99a8;
+  font-size: 22rpx;
+  letter-spacing: 3rpx;
+}
+
+.pet-game-page__title {
+  color: #234555;
+  font-size: 38rpx;
+  font-weight: 700;
+  margin-top: 8rpx;
+}
+
+.pet-game-page__time {
+  color: #30586a;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.pet-game-page__scorebar {
+  gap: 18rpx;
+  margin: 28rpx 0 22rpx;
+}
+
+.pet-game-page__scorecard {
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 28rpx;
+  color: #31586b;
+  flex: 1;
+  font-size: 24rpx;
+  padding: 22rpx;
+}
+
+.pet-game-page__scorecard view:last-child {
+  font-size: 36rpx;
+  font-weight: 700;
+  margin-top: 10rpx;
+}
+
+.pet-game-stage {
+  background: linear-gradient(180deg, #def4ff 0%, #ddf0ff 44%, #cdeec7 100%);
+  border-radius: 32rpx;
+  height: 560rpx;
+  overflow: hidden;
+  position: relative;
+}
+
+.pet-game-bubble,
+.pet-game-page__primary,
+.pet-game-page__ghost {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pet-game-bubble::after,
+.pet-game-page__primary::after,
+.pet-game-page__ghost::after {
+  border: none;
+}
+
+.pet-game-bubble {
+  background: radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.98), rgba(177, 241, 255, 0.68) 52%, rgba(89, 195, 228, 0.44) 100%);
+  border-radius: 50%;
+  box-shadow: inset -6rpx -6rpx 14rpx rgba(72, 166, 196, 0.16), 0 12rpx 22rpx rgba(78, 167, 203, 0.18);
+  position: absolute;
+}
+
+.pet-game-pet {
+  background: linear-gradient(180deg, #fffdf0 0%, #ffe3af 100%);
+  border-radius: 46% 46% 42% 42%;
+  bottom: 44rpx;
+  height: 138rpx;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 126rpx;
+}
+
+.pet-game-summary {
+  color: #355d71;
+  font-size: 26rpx;
+  line-height: 1.65;
+  margin-top: 22rpx;
+  min-height: 84rpx;
+}
+
+.pet-game-page__actions {
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.pet-game-page__primary,
+.pet-game-page__ghost {
+  border-radius: 999rpx;
+  flex: 1;
+  font-size: 28rpx;
+  padding: 22rpx 0;
+}
+
+.pet-game-page__primary {
+  background: linear-gradient(135deg, #8adfb0, #66c6de);
+  color: #173949;
+  font-weight: 700;
+}
+
+.pet-game-page__ghost {
+  background: rgba(255, 255, 255, 0.78);
+  color: #4b6f84;
+}
+</style>
