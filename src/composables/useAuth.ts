@@ -43,7 +43,7 @@ const mockUser: AuthUser = {
 
 const mockPet: PetProfile = {
   _openid: mockUser._openid,
-  name: 'Koko',
+  name: '可可',
   stage: 'growing',
   mood: 82,
   health: 88,
@@ -164,7 +164,7 @@ const login = async () => {
   }
 }
 
-const syncUserProfile = async (profile: { nickName?: string; avatarUrl?: string; onboardingDone?: boolean }) => {
+const syncUserProfile = async (profile: { nickName?: string; avatarUrl?: string; onboardingDone?: boolean; petName?: string }) => {
   if (!user.value) {
     await login()
   }
@@ -174,11 +174,16 @@ const syncUserProfile = async (profile: { nickName?: string; avatarUrl?: string;
 
   try {
     if (!isWechatCloudConfigured() || isMockSession.value) {
+      const nextPetName = profile.petName?.trim()
       user.value = {
         ...(user.value ?? mockUser),
         nickName: profile.nickName?.trim() || user.value?.nickName || mockUser.nickName,
         avatarUrl: profile.avatarUrl || user.value?.avatarUrl || '',
         onboardingDone: profile.onboardingDone ?? user.value?.onboardingDone ?? false,
+      }
+      pet.value = {
+        ...(pet.value ?? mockPet),
+        name: nextPetName || pet.value?.name || mockPet.name,
       }
       if (profile.onboardingDone !== undefined) {
         writeOnboardingState(profile.onboardingDone)
@@ -195,10 +200,17 @@ const syncUserProfile = async (profile: { nickName?: string; avatarUrl?: string;
     writeOnboardingState(Boolean(result.user.onboardingDone))
   } catch (caughtError) {
     error.value = caughtError instanceof Error ? caughtError.message : 'Profile sync failed. Please try again.'
+    const nextPetName = profile.petName?.trim()
     user.value = {
       ...(user.value ?? mockUser),
       nickName: profile.nickName?.trim() || user.value?.nickName || mockUser.nickName,
       avatarUrl: profile.avatarUrl || user.value?.avatarUrl || '',
+    }
+    if (nextPetName) {
+      pet.value = {
+        ...(pet.value ?? mockPet),
+        name: nextPetName,
+      }
     }
   } finally {
     loading.value = false
@@ -235,12 +247,14 @@ const completeOnboarding = async (options?: {
   useWechatProfile?: boolean
   nickName?: string
   avatarFilePath?: string
+  petName?: string
 }) => {
   await login()
 
   const nextProfile: { nickName?: string; avatarUrl?: string; onboardingDone?: boolean } = {
     onboardingDone: true,
   }
+  const petName = options?.petName?.trim() || '可可'
 
   if (options?.useWechatProfile) {
     if (options.nickName?.trim()) {
@@ -257,7 +271,10 @@ const completeOnboarding = async (options?: {
     nextProfile.nickName = options.nickName.trim()
   }
 
-  await syncUserProfile(nextProfile)
+  await syncUserProfile({
+    ...nextProfile,
+    petName,
+  })
 }
 
 export const useAuth = () => ({

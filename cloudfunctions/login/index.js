@@ -21,9 +21,9 @@ const defaultUser = (openid, profile = {}) => ({
   onboardingDone: false,
 })
 
-const defaultPet = (openid) => ({
+const defaultPet = (openid, profile = {}) => ({
   _openid: openid,
-  name: 'Koko',
+  name: profile.petName || '可可',
   stage: 'growing',
   mood: 82,
   health: 88,
@@ -67,6 +67,8 @@ const createIfMissing = async (collection, dataFactory, openid) => {
 const pickProfile = (profile = {}) => ({
   nickName: typeof profile.nickName === 'string' && profile.nickName.trim() ? profile.nickName.trim() : undefined,
   avatarUrl: typeof profile.avatarUrl === 'string' ? profile.avatarUrl : undefined,
+  petName: typeof profile.petName === 'string' && profile.petName.trim() ? profile.petName.trim() : undefined,
+  onboardingDone: typeof profile.onboardingDone === 'boolean' ? profile.onboardingDone : undefined,
 })
 
 exports.main = async (event = {}) => {
@@ -104,8 +106,8 @@ exports.main = async (event = {}) => {
       }
     }
 
-    if (typeof event.onboardingDone === 'boolean') {
-      data.onboardingDone = event.onboardingDone
+    if (typeof event.onboardingDone === 'boolean' || typeof profile.onboardingDone === 'boolean') {
+      data.onboardingDone = typeof event.onboardingDone === 'boolean' ? event.onboardingDone : profile.onboardingDone
     }
 
     await users.doc(user._id).update({ data })
@@ -115,7 +117,18 @@ exports.main = async (event = {}) => {
     }
   }
 
-  const pet = await createIfMissing(pets, defaultPet, OPENID)
+  let pet = await createIfMissing(pets, (openid) => defaultPet(openid, profile), OPENID)
+  if (profile.petName && pet.name !== profile.petName) {
+    const data = {
+      name: profile.petName,
+      updatedAt: now(),
+    }
+    await pets.doc(pet._id).update({ data })
+    pet = {
+      ...pet,
+      ...data,
+    }
+  }
   await createIfMissing(userSettings, defaultSettings, OPENID)
 
   return {

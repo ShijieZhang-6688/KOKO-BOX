@@ -2,10 +2,15 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import PageScaffold from '../../src/components/PageScaffold.vue'
-import { useWechatShare } from '../../src/composables/useWechatShare'
 import { useAuth } from '../../src/composables/useAuth'
+import { useKokoState } from '../../src/composables/useKokoState'
+import { useWechatShare } from '../../src/composables/useWechatShare'
 
-const { loading, error, hasCompletedOnboarding, completeOnboarding, refreshOnboardingState } = useAuth()
+type LoginMode = 'wechat' | 'guest'
+type LoginStep = 'auth-choice' | 'pet-naming'
+
+const { loading, pet: authPet, hasCompletedOnboarding, login, completeOnboarding, refreshOnboardingState } = useAuth()
+const { syncPetFromAuth } = useKokoState()
 
 useWechatShare({
   path: '/pages/index/index',
@@ -15,32 +20,17 @@ useWechatShare({
   },
 })
 
-const useWechatProfile = ref(true)
-const wechatNickname = ref('')
-const customNickname = ref('')
-const avatarFilePath = ref('')
+const step = ref<LoginStep>('auth-choice')
+const selectedLoginMode = ref<LoginMode>('wechat')
+const petName = ref('可可')
 const isRedirectingHome = ref(false)
 
-const enteredNickname = computed(() =>
-  useWechatProfile.value ? wechatNickname.value.trim() : customNickname.value.trim(),
-)
-
-const canContinue = computed(() => {
-  if (loading.value) {
-    return false
-  }
-
-  if (useWechatProfile.value) {
-    return true
-  }
-
-  return enteredNickname.value.length > 0
-})
+const normalizedPetName = computed(() => petName.value.trim())
+const canStart = computed(() => !loading.value && normalizedPetName.value.length > 0)
+const stepLabel = computed(() => (step.value === 'auth-choice' ? '1 / 2' : '2 / 2'))
 
 const redirectToHome = () => {
-  if (isRedirectingHome.value) {
-    return
-  }
+  if (isRedirectingHome.value) return
 
   isRedirectingHome.value = true
   uni.switchTab({
@@ -59,41 +49,35 @@ const redirectToHome = () => {
   })
 }
 
-const switchMode = (next: boolean) => {
-  useWechatProfile.value = next
+const chooseLoginMode = async (mode: LoginMode) => {
+  selectedLoginMode.value = mode
+  await login()
+  step.value = 'pet-naming'
 }
 
-const handleChooseAvatar = (event: { detail?: { avatarUrl?: string } }) => {
-  avatarFilePath.value = event.detail?.avatarUrl || ''
+const handlePetNameInput = (event: { detail?: { value?: string } }) => {
+  petName.value = event.detail?.value ?? ''
 }
 
-const handleWechatNicknameBlur = (event: { detail?: { value?: string } }) => {
-  wechatNickname.value = event.detail?.value?.trim() || ''
-}
-
-const handleCustomNicknameInput = (event: { detail?: { value?: string } }) => {
-  customNickname.value = event.detail?.value?.trim() || ''
-}
-
-const submitLogin = async () => {
-  if (!canContinue.value) {
+const submitPetName = async () => {
+  if (!canStart.value) {
     uni.showToast({
-      title: '请先输入昵称',
+      title: '请先给宠物起名',
       icon: 'none',
     })
     return
   }
 
+  const finalPetName = normalizedPetName.value || '可可'
   await completeOnboarding({
-    useWechatProfile: useWechatProfile.value,
-    nickName: enteredNickname.value || undefined,
-    avatarFilePath: useWechatProfile.value ? avatarFilePath.value || undefined : undefined,
+    useWechatProfile: selectedLoginMode.value === 'wechat',
+    petName: finalPetName,
   })
 
-  if (error.value) {
-    return
-  }
-
+  syncPetFromAuth({
+    ...(authPet.value ?? {}),
+    name: finalPetName,
+  })
   redirectToHome()
 }
 
@@ -108,100 +92,253 @@ onShow(() => {
 
 <template>
   <PageScaffold>
-    <view class="login-page login-page--warm">
-      <view class="login-welcome-card">
-        <view class="login-welcome-card__badge">Koko Box</view>
-        <view class="login-welcome-card__hero">
-          <view class="login-welcome-card__copy">
-            <view class="login-title">轻轻登录，然后开始陪伴。</view>
-            <view class="login-copy">优先使用微信头像和昵称进入，也可以先用一个自定义昵称快速开始。</view>
-          </view>
-          <view class="login-pet-mark">
-            <view class="login-pet-mark__face">
-              <view class="login-pet-mark__ear login-pet-mark__ear--left" />
-              <view class="login-pet-mark__ear login-pet-mark__ear--right" />
-              <view class="login-pet-mark__eye login-pet-mark__eye--left" />
-              <view class="login-pet-mark__eye login-pet-mark__eye--right" />
-              <view class="login-pet-mark__nose" />
+    <view class="onboarding-page">
+      <view class="onboarding-card">
+        <view class="onboarding-card__top">
+          <view class="onboarding-card__step">{{ stepLabel }}</view>
+          <view class="onboarding-pet-mark">
+            <view class="onboarding-pet-mark__ear onboarding-pet-mark__ear--left" />
+            <view class="onboarding-pet-mark__ear onboarding-pet-mark__ear--right" />
+            <view class="onboarding-pet-mark__face">
+              <view class="onboarding-pet-mark__eye onboarding-pet-mark__eye--left" />
+              <view class="onboarding-pet-mark__eye onboarding-pet-mark__eye--right" />
+              <view class="onboarding-pet-mark__nose" />
             </view>
           </view>
         </view>
-      </view>
 
-      <view class="login-shell login-shell--soft">
-        <view class="login-kicker">优先微信授权</view>
+        <view v-if="step === 'auth-choice'" class="onboarding-panel">
+          <view class="onboarding-kicker">KOKO BOX</view>
+          <view class="onboarding-title">选择你的进入方式</view>
+          <view class="onboarding-copy">先确认身份，下一步再给宠物起名字。</view>
 
-        <view class="login-primary-panel">
-          <view class="login-primary-panel__header">
-            <view>
-              <view class="login-primary-panel__title">微信头像昵称登录</view>
-              <view class="login-primary-panel__note">确认你想保存的头像和昵称，就能直接进入首页。</view>
-            </view>
-            <button class="login-submit-button" :disabled="!canContinue || !useWechatProfile" @click="submitLogin">
-              {{ loading && useWechatProfile ? '登录中...' : '继续进入' }}
+          <view class="onboarding-actions">
+            <button class="onboarding-button onboarding-button--primary" :disabled="loading" @click="chooseLoginMode('wechat')">
+              {{ loading && selectedLoginMode === 'wechat' ? '登录中...' : '微信登录' }}
+            </button>
+            <button class="onboarding-button onboarding-button--ghost" :disabled="loading" @click="chooseLoginMode('guest')">
+              {{ loading && selectedLoginMode === 'guest' ? '进入中...' : '游客登录' }}
             </button>
           </view>
-
-          <view class="login-form-row login-form-row--card">
-            <button class="login-avatar-button" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
-              <image v-if="avatarFilePath" class="login-avatar-image" :src="avatarFilePath" mode="aspectFill" />
-              <view v-else class="login-avatar-placeholder">头像</view>
-            </button>
-
-            <view class="login-inline-fields">
-              <input
-                class="login-name-input"
-                type="nickname"
-                :value="wechatNickname"
-                placeholder="确认你的微信昵称"
-                @blur="handleWechatNicknameBlur"
-              />
-              <view class="login-helper-text">只有你确认过的资料会被保存，用于展示账户信息和宠物陪伴记录。</view>
-            </view>
-          </view>
         </view>
 
-        <view class="login-mode-switch login-mode-switch--secondary">
-          <button
-            class="login-mode-button"
-            :class="{ 'login-mode-button--active': useWechatProfile }"
-            @click="switchMode(true)"
-          >
-            微信资料
+        <view v-else class="onboarding-panel onboarding-panel--name">
+          <view class="onboarding-kicker">MEET YOUR PET</view>
+          <view class="onboarding-title">给你的宠物起一个名字吧</view>
+          <view class="onboarding-copy">这个名字会显示在首页，也会用于 AI 宠物对话。</view>
+
+          <input
+            class="onboarding-name-input"
+            type="text"
+            maxlength="12"
+            :value="petName"
+            placeholder="例如：可可"
+            @input="handlePetNameInput"
+          />
+
+          <button class="onboarding-button onboarding-button--primary" :disabled="!canStart" @click="submitPetName">
+            {{ loading ? '准备中...' : '开始陪伴' }}
           </button>
-          <button
-            class="login-mode-button"
-            :class="{ 'login-mode-button--active': !useWechatProfile }"
-            @click="switchMode(false)"
-          >
-            自定义昵称
+
+          <button class="onboarding-back-button" :disabled="loading" @click="step = 'auth-choice'">
+            返回重新选择
           </button>
         </view>
-
-        <view v-if="!useWechatProfile" class="login-secondary-panel">
-          <view class="login-secondary-panel__title">备用进入方式</view>
-          <view class="login-secondary-panel__note">如果你暂时不想同步微信资料，也可以先用昵称进入，稍后再补充头像。</view>
-          <view class="login-form-row login-form-row--single login-form-row--cardless">
-            <input
-              class="login-name-input login-name-input--field"
-              type="text"
-              maxlength="20"
-              :value="customNickname"
-              placeholder="输入你想使用的昵称"
-              @input="handleCustomNicknameInput"
-            />
-          </view>
-          <button class="login-secondary-button" :disabled="!canContinue" @click="submitLogin">
-            {{ loading ? '登录中...' : '使用昵称进入' }}
-          </button>
-        </view>
-
-        <view v-if="error" class="login-inline-error">
-          {{ error }}
-        </view>
-
-        <view class="login-footer-note">我们只会保存你主动确认的头像和昵称，让登录过程保持简单安心。</view>
       </view>
     </view>
   </PageScaffold>
 </template>
+
+<style scoped>
+.onboarding-page {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  min-height: calc(100vh - 160rpx);
+  padding: 40rpx 28rpx;
+}
+
+.onboarding-card {
+  background: rgba(255, 252, 246, 0.92);
+  border: 2rpx solid rgba(230, 209, 184, 0.5);
+  border-radius: 36rpx;
+  box-shadow: 0 24rpx 60rpx rgba(155, 124, 88, 0.12);
+  box-sizing: border-box;
+  max-width: 660rpx;
+  overflow: hidden;
+  padding: 32rpx;
+  width: 100%;
+}
+
+.onboarding-card__top {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.onboarding-card__step {
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 999rpx;
+  color: #8a705d;
+  font-size: 24rpx;
+  font-weight: 800;
+  padding: 10rpx 18rpx;
+}
+
+.onboarding-pet-mark {
+  background: linear-gradient(180deg, #fff2d7, #ffdca2);
+  border-radius: 50%;
+  height: 118rpx;
+  position: relative;
+  width: 118rpx;
+}
+
+.onboarding-pet-mark__face {
+  background: linear-gradient(180deg, #ffc66f, #f2a04f);
+  border-radius: 46% 46% 42% 42%;
+  bottom: 22rpx;
+  height: 68rpx;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 76rpx;
+}
+
+.onboarding-pet-mark__ear {
+  background: #ef9e4f;
+  border-radius: 22rpx 22rpx 8rpx 8rpx;
+  height: 42rpx;
+  position: absolute;
+  top: 18rpx;
+  width: 28rpx;
+  z-index: 1;
+}
+
+.onboarding-pet-mark__ear--left {
+  left: 28rpx;
+  transform: rotate(-18deg);
+}
+
+.onboarding-pet-mark__ear--right {
+  right: 28rpx;
+  transform: rotate(18deg);
+}
+
+.onboarding-pet-mark__eye,
+.onboarding-pet-mark__nose {
+  background: #253047;
+  position: absolute;
+}
+
+.onboarding-pet-mark__eye {
+  border-radius: 999rpx;
+  height: 14rpx;
+  top: 28rpx;
+  width: 9rpx;
+}
+
+.onboarding-pet-mark__eye--left {
+  left: 22rpx;
+}
+
+.onboarding-pet-mark__eye--right {
+  right: 22rpx;
+}
+
+.onboarding-pet-mark__nose {
+  border-radius: 50%;
+  bottom: 18rpx;
+  height: 10rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16rpx;
+}
+
+.onboarding-panel {
+  margin-top: 34rpx;
+}
+
+.onboarding-kicker {
+  color: #8b7464;
+  font-size: 22rpx;
+  font-weight: 800;
+  letter-spacing: 4rpx;
+}
+
+.onboarding-title {
+  color: #1f2a3f;
+  font-size: 46rpx;
+  font-weight: 900;
+  line-height: 1.15;
+  margin-top: 14rpx;
+}
+
+.onboarding-copy {
+  color: #786a61;
+  font-size: 27rpx;
+  line-height: 1.55;
+  margin-top: 14rpx;
+}
+
+.onboarding-actions {
+  display: grid;
+  gap: 18rpx;
+  margin-top: 46rpx;
+}
+
+.onboarding-button {
+  align-items: center;
+  border: none;
+  border-radius: 999rpx;
+  display: flex;
+  font-size: 30rpx;
+  font-weight: 850;
+  height: 96rpx;
+  justify-content: center;
+  margin: 0;
+  padding: 0 30rpx;
+}
+
+.onboarding-button::after,
+.onboarding-back-button::after {
+  border: none;
+}
+
+.onboarding-button--primary {
+  background: #253047;
+  color: #ffffff;
+}
+
+.onboarding-button--ghost {
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 2rpx rgba(198, 179, 158, 0.42);
+  color: #253047;
+}
+
+.onboarding-button[disabled],
+.onboarding-back-button[disabled] {
+  opacity: 0.56;
+}
+
+.onboarding-name-input {
+  background: rgba(255, 255, 255, 0.78);
+  border: 2rpx solid rgba(204, 181, 154, 0.45);
+  border-radius: 28rpx;
+  box-sizing: border-box;
+  color: #253047;
+  font-size: 34rpx;
+  font-weight: 850;
+  height: 100rpx;
+  margin-top: 40rpx;
+  padding: 0 28rpx;
+  width: 100%;
+}
+
+.onboarding-back-button {
+  background: transparent;
+  color: #806f64;
+  font-size: 25rpx;
+  margin-top: 22rpx;
+}
+</style>

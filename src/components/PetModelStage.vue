@@ -127,8 +127,6 @@ watch(
     <view class="pet-model-stage__halo" />
     <view class="pet-model-stage__platform" />
     <view class="pet-model-stage__badge">360</view>
-    <view class="pet-model-stage__hint">{{ dragging ? 'Drag to rotate' : 'Swipe left or right' }}</view>
-
     <view class="pet-faux3d" :class="`pet-faux3d--${action}`">
       <view class="pet-faux3d__shadow" />
 
@@ -198,8 +196,7 @@ watch(
   width: 310rpx;
 }
 
-.pet-model-stage__badge,
-.pet-model-stage__hint {
+.pet-model-stage__badge {
   background: rgba(255, 255, 255, 0.82);
   border-radius: 999rpx;
   color: #47667a;
@@ -211,14 +208,6 @@ watch(
   padding: 10rpx 16rpx;
   right: 12rpx;
   top: 12rpx;
-}
-
-.pet-model-stage__hint {
-  bottom: 10rpx;
-  font-size: 21rpx;
-  left: 50%;
-  padding: 12rpx 22rpx;
-  transform: translateX(-50%);
 }
 
 .pet-faux3d {

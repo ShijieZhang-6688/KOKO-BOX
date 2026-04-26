@@ -9,13 +9,21 @@ const FRAME_COUNT = 16
 const STEP_PX = 18
 const PET_LOTTIE_SIZE_RPX = 300
 const homeBackgroundSrc = '/static/home/room.webp'
+const chatPromptHints = [
+  'Tell Koko how your day is going',
+  'Ask Koko for a small cheer',
+  'Share one tiny happy thing',
+  'Ask what Koko wants to do next',
+  'Say hello to your pet friend',
+]
+
+const pickChatPromptHint = () => chatPromptHints[Math.floor(Math.random() * chatPromptHints.length)]
 
 const {
   pet,
   carePet,
   getPetQuickReply,
   getDigestStatus,
-  metrics,
   messages,
   sendChatMessage,
   clearMessages,
@@ -27,6 +35,7 @@ const petAction = ref<PetActionType>('idle')
 const petBubble = ref('')
 const showBubble = ref(false)
 const chatDraft = ref('')
+const chatPromptHint = ref(pickChatPromptHint())
 const sending = ref(false)
 const gameDrawerOpen = ref(false)
 const historyOpen = ref(false)
@@ -43,37 +52,12 @@ let dragStartX = 0
 let movedDistance = 0
 let carryDistance = 0
 
-const moodLabel = computed(() => {
-  if (pet.value.mood >= 85) return 'Feeling great'
-  if (pet.value.mood >= 65) return 'Relaxed'
-  if (pet.value.mood >= 45) return 'Needs company'
-  return 'Needs care'
-})
-
-const sceneStatusLabel = computed(() => {
-  if (pet.value.state === 'hungry') return `${pet.value.name} wants food`
-  if (pet.value.state === 'tired') return `${pet.value.name} needs rest`
-  if (pet.value.state === 'low') return `${pet.value.name} needs comfort`
-  if (pet.value.state === 'sick') return `${pet.value.name} needs attention`
-  if (pet.value.state === 'resting') return `${pet.value.name} is resting`
-  return 'Stable and ready to play'
-})
-
 const digestStatus = computed(() => getDigestStatus(pet.value, nowMs.value))
-const feedStatusLabel = computed(() =>
-  digestStatus.value.isDigesting ? `Digesting ${digestStatus.value.digestCountdownLabel}` : 'Can feed now',
-)
 
 const compactStats = computed(() => [
   { label: 'Mood', value: pet.value.mood, tint: 'sun' },
   { label: 'Energy', value: pet.value.energy, tint: 'leaf' },
   { label: 'Bond', value: pet.value.intimacy, tint: 'sky' },
-])
-
-const stageFacts = computed(() => [
-  `${pet.value.stage}`,
-  `${pet.value.facingDirection ?? 'front'} view`,
-  `${metrics.value.interactions} taps`,
 ])
 
 const recentMessages = computed(() =>
@@ -103,13 +87,8 @@ const careActions: Array<{
   { key: 'clean', label: 'Clean', action: 'stretch' },
 ]
 
-const interactiveActions: Array<{ action: PetActionType; bubble: string }> = [
-  { action: 'pounce', bubble: 'I am in a playful mood.' },
-  { action: 'spin', bubble: 'Look at me turn around.' },
-  { action: 'nuzzle', bubble: 'Stay close to me a little longer.' },
-  { action: 'chase', bubble: 'I almost caught my tail.' },
-  { action: 'stretch', bubble: 'That stretch feels good.' },
-]
+const actionDisplayLabel = (action: (typeof careActions)[number]) =>
+  action.key === 'feedMeal' && digestStatus.value.isDigesting ? digestStatus.value.digestCountdownLabel : action.label
 
 const clearTimers = () => {
   if (tapTimer) clearTimeout(tapTimer)
@@ -149,16 +128,16 @@ const handleSingleTap = async () => {
   triggerPetAction(reply.action === 'idle' ? 'greet' : reply.action, reply.content)
 }
 
-const handleDoubleTap = () => {
-  const next = interactiveActions[Math.floor(Math.random() * interactiveActions.length)]
-  triggerPetAction(next.action, next.bubble, 2400)
+const handleDoubleTap = async () => {
+  const reply = await getPetQuickReply('home-double-tap-greeting')
+  triggerPetAction(reply.action === 'idle' ? 'greet' : reply.action, reply.content, 2400)
 }
 
 const handlePetTap = () => {
   if (tapTimer) {
     clearTimeout(tapTimer)
     tapTimer = undefined
-    handleDoubleTap()
+    void handleDoubleTap()
     return
   }
 
@@ -231,6 +210,7 @@ const submitChat = async (content: string) => {
   sending.value = true
   try {
     await sendChatMessage(content)
+    chatPromptHint.value = pickChatPromptHint()
     showPetBubbleFor(lastAssistantMessage.value, 2600)
   } finally {
     sending.value = false
@@ -280,43 +260,21 @@ onBeforeUnmount(() => {
         <view class="home-topbar__title-block">
           <view class="home-topbar__eyebrow">PET HOME</view>
           <view class="home-topbar__title">{{ pet.name }}</view>
-          <view class="home-topbar__subtitle">{{ sceneStatusLabel }}</view>
         </view>
 
-        <view class="home-topbar__chips">
-          <view class="home-chip">{{ moodLabel }}</view>
-          <view class="home-chip home-chip--soft">{{ feedStatusLabel }}</view>
-        </view>
       </view>
 
-      <view class="home-status-panel">
-        <view class="home-status-panel__head">
-          <view>Today</view>
-          <view>{{ stageFacts.join(' - ') }}</view>
-        </view>
-        <view class="home-status-panel__bar">
-          <view
-            class="home-status-panel__fill"
-            :style="{ width: `${Math.max(18, Math.round((pet.hunger + pet.mood + pet.energy) / 3))}%` }"
-          />
+      <view class="home-stage__progress">
+        <view v-for="item in compactStats" :key="item.label" class="home-progress-card">
+          <view class="home-progress-card__label">{{ item.label }}</view>
+          <view class="home-progress-card__track">
+            <view class="home-progress-card__fill" :class="`home-progress-card__fill--${item.tint}`" :style="{ width: `${item.value}%` }" />
+          </view>
         </view>
       </view>
 
       <view class="home-stage">
         <view v-if="showBubble" class="pet-bubble">{{ petBubble }}</view>
-
-        <view v-if="digestStatus.isDigesting" class="home-stage__digest">
-          {{ `Digesting ${digestStatus.digestCountdownLabel}` }}
-        </view>
-
-        <view class="home-stage__progress">
-          <view v-for="item in compactStats" :key="item.label" class="home-progress-card">
-            <view class="home-progress-card__label">{{ item.label }}</view>
-            <view class="home-progress-card__track">
-              <view class="home-progress-card__fill" :class="`home-progress-card__fill--${item.tint}`" :style="{ width: `${item.value}%` }" />
-            </view>
-          </view>
-        </view>
 
         <view class="home-stage__model">
           <view
@@ -328,8 +286,6 @@ onBeforeUnmount(() => {
           >
             <view class="pet-model-stage__halo" />
             <view class="pet-model-stage__platform" />
-            <view class="pet-model-stage__hint">{{ dragging ? 'Drag' : 'Swipe' }}</view>
-
             <view v-if="shouldShowPetLottie" class="pet-lottie-wrap">
               <PetLottieAvatar :size-rpx="PET_LOTTIE_SIZE_RPX" :mirror="petFacingMirrored" />
             </view>
@@ -344,7 +300,7 @@ onBeforeUnmount(() => {
             :class="{ 'home-action-pill--disabled': action.key === 'feedMeal' && !digestStatus.canFeedMeal }"
             @click="performCare(action)"
           >
-            <view class="home-action-pill__title">{{ action.label }}</view>
+            <view class="home-action-pill__title">{{ actionDisplayLabel(action) }}</view>
           </button>
         </view>
 
@@ -355,7 +311,7 @@ onBeforeUnmount(() => {
                 v-model="chatDraft"
                 class="pet-chat-card__field"
                 :disabled="overlayChatCollapsed"
-                :placeholder="lastAssistantMessage"
+                :placeholder="chatPromptHint"
                 confirm-type="send"
                 @confirm="submitOverlayChat"
               />
@@ -596,7 +552,6 @@ onBeforeUnmount(() => {
 .home-topbar {
   align-items: flex-start;
   display: flex;
-  justify-content: space-between;
 }
 
 .home-topbar__title-block {
@@ -615,67 +570,9 @@ onBeforeUnmount(() => {
   margin-top: 6rpx;
 }
 
-.home-topbar__subtitle {
-  color: rgba(30, 57, 69, 0.72);
-  font-size: 24rpx;
-  margin-top: 6rpx;
-}
-
-.home-topbar__chips {
-  display: grid;
-  gap: 10rpx;
-}
-
-.home-chip {
-  background: rgba(255, 255, 255, 0.84);
-  border: 2rpx solid rgba(164, 213, 178, 0.55);
-  border-radius: 999rpx;
-  color: #356050;
-  font-size: 22rpx;
-  padding: 12rpx 20rpx;
-  text-align: center;
-}
-
-.home-chip--soft {
-  border-color: rgba(116, 194, 220, 0.42);
-  color: #35657e;
-}
-
-.home-status-panel {
-  backdrop-filter: blur(12rpx);
-  background: rgba(255, 255, 255, 0.62);
-  border: 2rpx solid rgba(255, 255, 255, 0.5);
-  border-radius: 26rpx;
-  box-shadow: 0 16rpx 34rpx rgba(98, 150, 126, 0.12);
-  margin-top: 16rpx;
-  padding: 16rpx 20rpx;
-}
-
-.home-status-panel__head {
-  align-items: center;
-  color: #3d6070;
-  display: flex;
-  font-size: 22rpx;
-  justify-content: space-between;
-}
-
-.home-status-panel__bar {
-  background: rgba(179, 220, 193, 0.48);
-  border-radius: 999rpx;
-  height: 14rpx;
-  margin-top: 12rpx;
-  overflow: hidden;
-}
-
-.home-status-panel__fill {
-  background: linear-gradient(90deg, #f5c95d, #88d681, #68c7df);
-  border-radius: inherit;
-  height: 100%;
-}
-
 .home-stage {
   flex: 1;
-  margin-top: 14rpx;
+  margin-top: 10rpx;
   min-height: 0;
   position: relative;
 }
@@ -690,7 +587,7 @@ onBeforeUnmount(() => {
   max-width: 390rpx;
   padding: 18rpx 22rpx;
   position: absolute;
-  top: 170rpx;
+  top: 180rpx;
   z-index: 6;
 }
 
@@ -704,27 +601,12 @@ onBeforeUnmount(() => {
   top: 100%;
 }
 
-.home-stage__digest {
-  backdrop-filter: blur(10rpx);
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 999rpx;
-  color: #cc7b3e;
-  font-size: 21rpx;
-  left: 12rpx;
-  padding: 12rpx 20rpx;
-  position: absolute;
-  top: 94rpx;
-  z-index: 5;
-}
-
 .home-stage__progress {
   display: grid;
   gap: 12rpx;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  left: 0;
-  position: absolute;
-  right: 154rpx;
-  top: 94rpx;
+  margin-top: 18rpx;
+  position: relative;
   z-index: 4;
 }
 
@@ -772,7 +654,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   position: absolute;
   right: 144rpx;
-  top: 166rpx;
+  top: 42rpx;
   z-index: 3;
 }
 
@@ -782,7 +664,7 @@ onBeforeUnmount(() => {
   justify-items: center;
   position: absolute;
   right: 0;
-  top: 102rpx;
+  top: 20rpx;
   width: 120rpx;
   z-index: 8;
 }
@@ -818,11 +700,10 @@ onBeforeUnmount(() => {
 }
 
 .home-stage__chat {
-  bottom: calc(18rpx + env(safe-area-inset-bottom));
-  left: 50%;
+  bottom: calc(12rpx + env(safe-area-inset-bottom));
+  left: 12rpx;
   position: absolute;
-  transform: translateX(-50%);
-  width: 470rpx;
+  right: 96rpx;
   z-index: 9;
 }
 
@@ -851,18 +732,6 @@ onBeforeUnmount(() => {
   height: 64rpx;
   position: absolute;
   width: 250rpx;
-}
-
-.pet-model-stage__hint {
-  background: rgba(255, 255, 255, 0.78);
-  border-radius: 999rpx;
-  bottom: 18rpx;
-  color: #47667a;
-  font-size: 20rpx;
-  left: 50%;
-  padding: 10rpx 18rpx;
-  position: absolute;
-  transform: translateX(-50%);
 }
 
 .pet-lottie-wrap {
@@ -1147,7 +1016,8 @@ onBeforeUnmount(() => {
 .pet-chat-card__bar {
   align-items: center;
   display: flex;
-  gap: 12rpx;
+  gap: 8rpx;
+  justify-content: center;
 }
 
 .pet-chat-card__field {
@@ -1160,7 +1030,8 @@ onBeforeUnmount(() => {
   color: #244456;
   flex: 1;
   font-size: 23rpx;
-  height: 76rpx;
+  height: 84rpx;
+  min-width: 0;
   padding: 0 24rpx;
 }
 
@@ -1173,12 +1044,12 @@ onBeforeUnmount(() => {
   border-radius: 999rpx;
   color: #315b74;
   display: flex;
-  font-size: 22rpx;
+  font-size: 19rpx;
   font-weight: 700;
-  height: 76rpx;
+  height: 84rpx;
   justify-content: center;
-  min-width: 92rpx;
-  padding: 0 22rpx;
+  min-width: 76rpx;
+  padding: 0 14rpx;
 }
 
 .chat-history-layer {
