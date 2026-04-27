@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+﻿import { computed, ref } from 'vue'
 import type {
   AppMetrics,
   CareActionKey,
@@ -32,6 +32,11 @@ import {
   loadPetChatHistoryFromCloud,
   type PetDialogueHistoryMessage,
 } from '../services/petDialogue'
+import {
+  clearCourseScheduleFromCloud,
+  loadCourseScheduleFromCloud,
+  saveCourseScheduleToCloud,
+} from '../services/courseScheduleCloud'
 
 const STORAGE_KEY = 'koko-box-mini-state-v1'
 const CHAT_SESSION_ID = 'main-session'
@@ -126,7 +131,7 @@ const defaultTasks = (): Task[] => [
   },
   {
     id: 'task-winddown',
-    title: '晚间复盘并放松',
+    title: '晚间复盘和放松',
     category: 'life',
     time: '21:30',
     repeatType: 'daily',
@@ -272,6 +277,8 @@ const petPersonaPrompt = ref(defaultPetPersonaPrompt)
 const hydrated = ref(false)
 const cloudHistoryHydrated = ref(false)
 const cloudHistoryHydrating = ref(false)
+const cloudCourseScheduleHydrated = ref(false)
+const cloudCourseScheduleHydrating = ref(false)
 
 const deriveStage = (value: number): PetStage => {
   if (value >= 85) return 'adult'
@@ -481,7 +488,7 @@ const carePet = (action: CareActionKey): CareActionResult => {
     return {
       action,
       success: false,
-      message: `可可还在消化这顿饭，再等 ${digestStatus.digestCountdownLabel} 吧。`,
+      message: '可可还在消化这顿饭，再等 ' + digestStatus.digestCountdownLabel + ' 吧。',
       blockedUntil: pet.value.digestingUntil,
     }
   }
@@ -551,7 +558,7 @@ const carePet = (action: CareActionKey): CareActionResult => {
       medicalLogs: [
         {
           id: createId('med'),
-          note: `${current.label}后状态恢复，健康值回升。`,
+          note: current.label + '后状态恢复，健康值回升。',
           timestamp: nowIso(),
         },
         ...archive.value.medicalLogs,
@@ -617,7 +624,7 @@ const createTask = (payload: {
   }
 
   tasks.value = [nextTask, ...tasks.value]
-  logSyncEvent(`新的计划「${payload.title}」已加入提醒队列。`, {
+  logSyncEvent('新的计划「' + payload.title + '」已加入提醒队列。', {
     target: 'desktop',
     actionType: 'plan-create',
   })
@@ -641,7 +648,7 @@ const deleteTask = (taskId: string) => {
   persistState()
 }
 
-const setCourseSchedule = (schedule: CourseSchedule) => {
+const setCourseSchedule = async (schedule: CourseSchedule) => {
   hydrateState()
   courseSchedule.value = schedule
   logSyncEvent('课程表已从截图导入，并更新到待办页。', {
@@ -649,11 +656,22 @@ const setCourseSchedule = (schedule: CourseSchedule) => {
     actionType: 'schedule-import',
   })
   persistState()
+
+  try {
+    const savedSchedule = await saveCourseScheduleToCloud(schedule)
+    if (savedSchedule) {
+      courseSchedule.value = savedSchedule
+      persistState()
+    }
+  } catch {
+    // Keep local schedule when cloud sync fails.
+  }
 }
 
 const clearCourseSchedule = () => {
   hydrateState()
   courseSchedule.value = null
+  void clearCourseScheduleFromCloud()
   persistState()
 }
 
@@ -679,7 +697,7 @@ const applyMiniGameReward = (result: MiniGameResult) => {
     activeMiniGame: result.gameType,
   })
 
-  logSyncEvent(`小游戏 ${result.gameType} 完成，得到 ${result.score} 分。`, {
+  logSyncEvent('小游戏 ' + result.gameType + ' 完成，得到 ' + result.score + ' 分。', {
     target: 'desktop',
     actionType: `mini-game-${result.gameType}`,
     status: 'success',
@@ -697,7 +715,7 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
 
   if (nextStatus === 'completed') {
     rewardTask(targetTask.rewardType)
-    logSyncEvent(`任务「${targetTask.title}」已完成，奖励已发放。`, {
+    logSyncEvent('任务「' + targetTask.title + '」已完成，奖励已发放。', {
       target: 'm5',
       actionType: 'task-complete',
     })
@@ -707,7 +725,7 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
         {
           id: createId('mile'),
           title: '完成一项今日计划',
-          description: `你完成了「${targetTask.title}」，可可的情绪和亲密度都上升了。`,
+          description: '你完成了「' + targetTask.title + '」，可可的情绪和亲密度都上升了。',
           timestamp: nowIso(),
         },
         ...archive.value.milestones,
@@ -717,7 +735,7 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
 
   if (nextStatus === 'delayed') {
     updatePet({ mood: pet.value.mood - 2 })
-    logSyncEvent(`任务「${targetTask.title}」延后，宠物发出了柔和提醒。`, {
+    logSyncEvent('任务「' + targetTask.title + '」延后，宠物发出了柔和提醒。', {
       target: 'desktop',
       actionType: 'task-delay',
       status: 'retrying',
@@ -726,7 +744,7 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
 
   if (nextStatus === 'skipped') {
     updatePet({ mood: pet.value.mood - 4, intimacy: pet.value.intimacy - 1 })
-    logSyncEvent(`任务「${targetTask.title}」已跳过，系统记录轻微情绪波动。`, {
+    logSyncEvent('任务「' + targetTask.title + '」已跳过，系统记录轻微情绪波动。', {
       target: 'miniapp',
       actionType: 'task-skip',
       status: 'offline',
@@ -789,6 +807,47 @@ const hydrateCloudChatHistory = async () => {
     // Ignore history hydration failures and keep local cache.
   } finally {
     cloudHistoryHydrating.value = false
+  }
+}
+
+const hydrateCloudCourseSchedule = async () => {
+  if (cloudCourseScheduleHydrated.value || cloudCourseScheduleHydrating.value) {
+    return
+  }
+
+  cloudCourseScheduleHydrating.value = true
+
+  try {
+    const cloudSchedule = await loadCourseScheduleFromCloud()
+    const localSchedule = courseSchedule.value
+
+    if (cloudSchedule?.courses.length) {
+      const cloudImportedAt = new Date(cloudSchedule.importedAt || 0).getTime()
+      const localImportedAt = new Date(localSchedule?.importedAt || 0).getTime()
+
+      if (!localSchedule || cloudImportedAt >= localImportedAt) {
+        courseSchedule.value = cloudSchedule
+        persistState()
+      } else if (localSchedule.courses.length) {
+        const savedSchedule = await saveCourseScheduleToCloud(localSchedule).catch(() => null)
+        if (savedSchedule) {
+          courseSchedule.value = savedSchedule
+          persistState()
+        }
+      }
+    } else if (localSchedule?.courses.length) {
+      const savedSchedule = await saveCourseScheduleToCloud(localSchedule).catch(() => null)
+      if (savedSchedule) {
+        courseSchedule.value = savedSchedule
+        persistState()
+      }
+    }
+
+    cloudCourseScheduleHydrated.value = true
+  } catch {
+    // Ignore course schedule hydration failures and keep local cache.
+  } finally {
+    cloudCourseScheduleHydrating.value = false
   }
 }
 
@@ -960,7 +1019,7 @@ const runDemoScenario = (scenario: 'reminder' | 'taskComplete' | 'comfort' | 'of
   if (scenario === 'reminder') {
     const pendingTask = tasks.value.find((item) => item.status === 'pending')
     if (pendingTask) {
-      logSyncEvent(`任务「${pendingTask.title}」到点，已触发柔和提醒。`, {
+      logSyncEvent('任务「' + pendingTask.title + '」到点，已触发柔和提醒。', {
         target: 'desktop',
         actionType: 'task-reminder',
         status: 'success',
@@ -977,7 +1036,7 @@ const runDemoScenario = (scenario: 'reminder' | 'taskComplete' | 'comfort' | 'of
   }
 
   if (scenario === 'comfort') {
-    void sendChatMessage('今天压力有点大，但我还想努力一下。', 'stressed')
+    void sendChatMessage('今天压力有点大，但我还是想努力一下。', 'stressed')
   }
 
   if (scenario === 'offline') {
@@ -1041,7 +1100,7 @@ const recentReminders = computed(() => {
     .map((item) => ({
       id: item.id,
       title: item.title,
-      subtitle: `${item.time} · ${item.status === 'delayed' ? '已延后，等待追提醒' : '待执行'}`,
+      subtitle: item.time + ' · ' + (item.status === 'delayed' ? '已延后，等待追提醒' : '待执行'),
       badge: item.status === 'delayed' ? '追提醒' : '待办',
       tone: item.status === 'delayed' ? 'peach' : 'mint',
     }))
@@ -1085,6 +1144,7 @@ const overviewStats = computed(() => [
 
 hydrateState()
 void hydrateCloudChatHistory()
+void hydrateCloudCourseSchedule()
 
 export const useKokoState = () => ({
   pet,
@@ -1130,3 +1190,4 @@ export const useKokoState = () => ({
   petRotationFrames: PET_ROTATION_FRAMES,
   feedDigestMs: FEED_DIGEST_MS,
 })
+

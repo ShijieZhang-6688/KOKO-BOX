@@ -210,7 +210,7 @@ const importScheduleFromScreenshot = async () => {
       sourceFileID: fileID,
     }
 
-    setCourseSchedule(nextSchedule)
+    await setCourseSchedule(nextSchedule)
     showSchedulePanel.value = true
     showScheduleImporter.value = false
     uni.showToast({ title: '课表已导入', icon: 'success' })

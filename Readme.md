@@ -34,6 +34,7 @@ Create these CloudBase database collections:
 - `pets`
 - `user_settings`
 - `pet_dialogue_histories`
+- `course_schedules`
 
 Recommended permission for the first version: users can only read and write their own records. Keep identity-sensitive creation and updates in cloud functions so `_openid` cannot be forged by the client.
 
@@ -61,6 +62,15 @@ The chat and pet quick-reply flow now calls cloud function `pet-dialogue` instea
 2. Test from mini program chat page and pet interaction entry.
 
 If `pet_dialogue_histories` has not been created yet, the updated function can still reply in stateless mode, but chat history persistence will not work until that collection exists.
+
+### 5. Deploy the course schedule sync cloud function
+
+The imported timetable can now sync across devices for the same WeChat account.
+
+1. In WeChat DevTools, find `cloudfunctions/schedule-sync`.
+2. Install dependencies for this function.
+3. Upload and deploy function `schedule-sync`.
+4. Ensure the `course_schedules` collection already exists before testing timetable import on multiple devices.
 
 Important security note: if a key was ever committed in client code before, rotate that key in DashScope immediately and only keep the new key in cloud function env variables.
 
