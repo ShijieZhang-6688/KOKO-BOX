@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import PetLottieAvatar from '../components/PetLottieAvatar.vue'
 import { useKokoState } from '../composables/useKokoState'
-import type { Task, TaskCategory, TaskKind } from '../types/koko'
+import { recognizeScheduleFromImage } from '../services/petDialogue'
+import type { CourseSchedule, ScheduleCourse, ScheduleWeekday, Task, TaskCategory, TaskKind } from '../types/koko'
 
-const { tasks, todayTasks, completedTasks, createTask, updateTask, setTaskStatus } = useKokoState()
+const { tasks, todayTasks, completedTasks, courseSchedule, createTask, updateTask, setTaskStatus, setCourseSchedule } = useKokoState()
 
 type StyledTaskCard = Task & {
   categoryIcon: string
@@ -13,6 +13,23 @@ type StyledTaskCard = Task & {
 }
 
 type EditorMode = 'create' | 'edit'
+type ScheduleCell = {
+  weekday: ScheduleWeekday
+  courses: ScheduleCourse[]
+}
+
+type ScheduleRow = {
+  key: string
+  timeLabel: string
+  cells: ScheduleCell[]
+}
+
+interface WechatCloudApi {
+  uploadFile?: (options: {
+    cloudPath: string
+    filePath: string
+  }) => Promise<{ fileID: string }>
+}
 
 const categoryMeta: Record<TaskCategory, { icon: string; label: string }> = {
   schedule: { icon: '⏰', label: '日程' },
@@ -24,8 +41,10 @@ const categoryMeta: Record<TaskCategory, { icon: string; label: string }> = {
 
 const iconOptions = ['🌿', '✏️', '📌', '⏰', '🏠', '🍰']
 const colorOptions = ['#d9cff3', '#cfefd7', '#ffe9ad', '#ffd3dc', '#d6e8fa', '#ffd8c9']
-const petTapCount = ref(0)
 const showCreateChoice = ref(false)
+const showScheduleImporter = ref(false)
+const importingSchedule = ref(false)
+const scheduleImportError = ref('')
 const editorVisible = ref(false)
 const editorMode = ref<EditorMode>('create')
 const editorKind = ref<TaskKind>('task')
@@ -62,6 +81,37 @@ const ddlCards = computed(() =>
 
 const pendingCards = computed(() => todayTasks.value.filter((task) => !isDdlTask(task)).map(toStyledCard))
 const doneCards = computed(() => completedTasks.value.filter((task) => !isDdlTask(task)).map(toStyledCard))
+const weekdayColumns: Array<{ key: ScheduleWeekday; label: string }> = [
+  { key: 1, label: '周一' },
+  { key: 2, label: '周二' },
+  { key: 3, label: '周三' },
+  { key: 4, label: '周四' },
+  { key: 5, label: '周五' },
+  { key: 6, label: '周六' },
+  { key: 7, label: '周日' },
+]
+const importedCourses = computed(() => courseSchedule.value?.courses ?? [])
+const scheduleRows = computed<ScheduleRow[]>(() => {
+  const slots = Array.from(
+    new Set(importedCourses.value.map((course) => `${course.startTime}-${course.endTime}`).filter((slot) => slot !== '-')),
+  ).sort()
+
+  return slots.map((slot) => {
+    const [startTime, endTime] = slot.split('-')
+
+    return {
+      key: slot,
+      timeLabel: `${startTime}\n${endTime}`,
+      cells: weekdayColumns.map((weekday) => ({
+        weekday: weekday.key,
+        courses: importedCourses.value.filter(
+          (course) => course.weekday === weekday.key && course.startTime === startTime && course.endTime === endTime,
+        ),
+      })),
+    }
+  })
+})
+const hasCourseSchedule = computed(() => importedCourses.value.length > 0)
 
 const openCreateChoice = () => {
   showCreateChoice.value = true
@@ -69,6 +119,99 @@ const openCreateChoice = () => {
 
 const closeCreateChoice = () => {
   showCreateChoice.value = false
+}
+
+const getWechatCloudApi = () =>
+  (globalThis as { wx?: { cloud?: WechatCloudApi } }).wx?.cloud
+
+const chooseScheduleImage = () =>
+  new Promise<string>((resolve, reject) => {
+    uni.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album'],
+      success: (result) => {
+        const filePath = result.tempFilePaths?.[0]
+        if (filePath) {
+          resolve(filePath)
+          return
+        }
+
+        reject(new Error('未选择课表截图'))
+      },
+      fail: reject,
+    })
+  })
+
+const uploadScheduleImage = async (filePath: string) => {
+  const wxCloud = getWechatCloudApi()
+  if (!wxCloud?.uploadFile) {
+    throw new Error('微信云上传不可用')
+  }
+
+  const extension = filePath.includes('.') ? filePath.slice(filePath.lastIndexOf('.')).split('?')[0] : '.png'
+  const safeExtension = ['.jpg', '.jpeg', '.png', '.webp'].includes(extension.toLowerCase()) ? extension : '.png'
+  const { fileID } = await wxCloud.uploadFile({
+    cloudPath: `schedules/${Date.now()}${safeExtension}`,
+    filePath,
+  })
+
+  return fileID
+}
+
+const openScheduleImporter = () => {
+  scheduleImportError.value = ''
+  showScheduleImporter.value = true
+}
+
+const getScheduleImportErrorMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || '')
+
+  if (message.includes('FUNCTIONS_TIME_LIMIT_EXCEEDED') || message.includes('timed out')) {
+    return 'AI 识别超时，请重新部署 pet-dialogue 云函数并确认超时时间为 30 秒后再试。'
+  }
+
+  if (message.includes('No courses recognized') || message.includes('No valid courses')) {
+    return '识别失败，请换一张更清晰的课表截图。'
+  }
+
+  if (message.includes('QWEN_API_KEY')) {
+    return 'AI 密钥未配置，请检查 pet-dialogue 云函数环境变量。'
+  }
+
+  return '识别失败，请换一张更清晰的课表截图。'
+}
+
+const closeScheduleImporter = () => {
+  if (importingSchedule.value) return
+  showScheduleImporter.value = false
+}
+
+const importScheduleFromScreenshot = async () => {
+  if (importingSchedule.value) return
+
+  importingSchedule.value = true
+  scheduleImportError.value = ''
+
+  try {
+    const filePath = await chooseScheduleImage()
+    const fileID = await uploadScheduleImage(filePath)
+    const courses = await recognizeScheduleFromImage(fileID)
+    const nextSchedule: CourseSchedule = {
+      id: `schedule-${Date.now()}`,
+      courses,
+      importedAt: new Date().toISOString(),
+      sourceFileID: fileID,
+    }
+
+    setCourseSchedule(nextSchedule)
+    showScheduleImporter.value = false
+    uni.showToast({ title: '课表已导入', icon: 'success' })
+  } catch (error) {
+    scheduleImportError.value = getScheduleImportErrorMessage(error)
+  } finally {
+    importingSchedule.value = false
+  }
 }
 
 const openEditor = (mode: EditorMode, kind: TaskKind, task?: Task) => {
@@ -144,9 +287,6 @@ const undoCompleteTask = (taskId: string) => {
   setTaskStatus(taskId, 'pending')
 }
 
-const cheerPet = () => {
-  petTapCount.value += 1
-}
 </script>
 
 <template>
@@ -172,6 +312,29 @@ const cheerPet = () => {
           </button>
         </view>
         <view v-else class="planner-punch-ddl-empty">暂无临近截止事项</view>
+      </view>
+
+      <view v-if="hasCourseSchedule" class="planner-punch-section planner-schedule-section">
+        <view class="planner-punch-section__title">我的课表</view>
+        <view class="planner-schedule-card">
+          <view class="planner-schedule-grid">
+            <view class="planner-schedule-head planner-schedule-time-head">时间</view>
+            <view v-for="weekday in weekdayColumns" :key="weekday.key" class="planner-schedule-head">
+              {{ weekday.label }}
+            </view>
+            <template v-for="row in scheduleRows" :key="row.key">
+              <view class="planner-schedule-time">{{ row.timeLabel }}</view>
+              <view v-for="cell in row.cells" :key="`${row.key}-${cell.weekday}`" class="planner-schedule-cell">
+                <view v-for="course in cell.courses" :key="course.id" class="planner-schedule-course">
+                  <view class="planner-schedule-course__name">{{ course.name }}</view>
+                  <view v-if="course.location" class="planner-schedule-course__meta">{{ course.location }}</view>
+                  <view v-if="course.weeks" class="planner-schedule-course__meta">{{ course.weeks }}</view>
+                </view>
+              </view>
+            </template>
+          </view>
+          <button class="planner-schedule-change" @click="openScheduleImporter">更换课表</button>
+        </view>
       </view>
 
       <view class="planner-punch-section">
@@ -214,17 +377,26 @@ const cheerPet = () => {
         <view v-else class="planner-punch-empty">先从一个小目标开始，完成后它会来到这里。</view>
       </view>
 
-      <view class="planner-punch-pet-zone">
-        <button class="planner-punch-pet" :class="{ 'planner-punch-pet--tap': petTapCount % 2 === 1 }" @click="cheerPet">
-          <PetLottieAvatar :size-rpx="120" />
-        </button>
-      </view>
     </view>
+
+    <button class="planner-schedule-fab" @click="openScheduleImporter">我的课表</button>
 
     <view v-if="showCreateChoice" class="planner-punch-choice-mask" @click="closeCreateChoice">
       <view class="planner-punch-choice" @click.stop>
         <button @click="chooseCreateKind('ddl')">创建 DDL</button>
         <button @click="chooseCreateKind('task')">创建任务</button>
+      </view>
+    </view>
+
+    <view v-if="showScheduleImporter" class="planner-punch-choice-mask" @click="closeScheduleImporter">
+      <view class="planner-schedule-importer" @click.stop>
+        <view class="planner-punch-editor__title">我的课表</view>
+        <view class="planner-schedule-importer__copy">上传课程表截图，AI 会识别并生成周课表。</view>
+        <button class="planner-schedule-importer__primary" :disabled="importingSchedule" @click="importScheduleFromScreenshot">
+          {{ importingSchedule ? '识别中...' : '导入课表截图' }}
+        </button>
+        <button class="planner-schedule-importer__ghost" :disabled="importingSchedule" @click="closeScheduleImporter">取消</button>
+        <view v-if="scheduleImportError" class="planner-schedule-importer__error">{{ scheduleImportError }}</view>
       </view>
     </view>
 

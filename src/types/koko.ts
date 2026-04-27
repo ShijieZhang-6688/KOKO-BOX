@@ -5,6 +5,7 @@ export type TaskCategory = 'schedule' | 'study' | 'work' | 'health' | 'life'
 export type TaskRepeatType = 'once' | 'daily' | 'weekly'
 export type TaskStatus = 'pending' | 'completed' | 'delayed' | 'skipped'
 export type TaskKind = 'task' | 'ddl'
+export type ScheduleWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7
 export type RewardType = 'snack' | 'coin' | 'toy' | 'mood' | 'bond'
 export type TaskPriority = 'low' | 'medium' | 'high'
 export type EmotionTag =
@@ -84,6 +85,24 @@ export interface Task {
   }>
   createdAt: string
   completedAt?: string
+}
+
+export interface ScheduleCourse {
+  id: string
+  name: string
+  weekday: ScheduleWeekday
+  startTime: string
+  endTime: string
+  location: string
+  teacher: string
+  weeks: string
+}
+
+export interface CourseSchedule {
+  id: string
+  courses: ScheduleCourse[]
+  importedAt: string
+  sourceFileID?: string
 }
 
 export interface ChatMessage {

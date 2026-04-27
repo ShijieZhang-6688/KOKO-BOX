@@ -4,6 +4,7 @@ import type {
   CareActionKey,
   CareActionResult,
   ChatMessage,
+  CourseSchedule,
   DailySnapshot,
   DeviceStatus,
   EmotionTag,
@@ -246,6 +247,7 @@ const defaultMetrics = (): AppMetrics => ({
 interface PersistedState {
   pet: Pet
   tasks: Task[]
+  courseSchedule?: CourseSchedule | null
   messages: ChatMessage[]
   devices: DeviceStatus[]
   syncEvents: SyncEvent[]
@@ -258,6 +260,7 @@ interface PersistedState {
 
 const pet = ref<Pet>(defaultPet())
 const tasks = ref<Task[]>(defaultTasks())
+const courseSchedule = ref<CourseSchedule | null>(null)
 const messages = ref<ChatMessage[]>(defaultMessages())
 const devices = ref<DeviceStatus[]>(defaultDevices())
 const syncEvents = ref<SyncEvent[]>(defaultSyncEvents())
@@ -328,6 +331,7 @@ const persistState = () => {
   const payload: PersistedState = {
     pet: sanitizePet(pet.value),
     tasks: tasks.value,
+    courseSchedule: courseSchedule.value,
     messages: messages.value,
     devices: devices.value,
     syncEvents: syncEvents.value,
@@ -345,6 +349,7 @@ const persistState = () => {
 const applySnapshot = (snapshot?: Partial<PersistedState>) => {
   pet.value = sanitizePet(snapshot?.pet)
   tasks.value = snapshot?.tasks ?? defaultTasks()
+  courseSchedule.value = snapshot?.courseSchedule ?? null
   messages.value = snapshot?.messages ?? defaultMessages()
   devices.value = snapshot?.devices ?? defaultDevices()
   syncEvents.value = snapshot?.syncEvents ?? defaultSyncEvents()
@@ -633,6 +638,22 @@ const updateTask = (
 const deleteTask = (taskId: string) => {
   hydrateState()
   tasks.value = tasks.value.filter((item) => item.id !== taskId)
+  persistState()
+}
+
+const setCourseSchedule = (schedule: CourseSchedule) => {
+  hydrateState()
+  courseSchedule.value = schedule
+  logSyncEvent('课程表已从截图导入，并更新到待办页。', {
+    target: 'miniapp',
+    actionType: 'schedule-import',
+  })
+  persistState()
+}
+
+const clearCourseSchedule = () => {
+  hydrateState()
+  courseSchedule.value = null
   persistState()
 }
 
@@ -1068,6 +1089,7 @@ void hydrateCloudChatHistory()
 export const useKokoState = () => ({
   pet,
   tasks,
+  courseSchedule,
   messages,
   devices,
   syncEvents,
@@ -1092,6 +1114,8 @@ export const useKokoState = () => ({
   createTask,
   updateTask,
   deleteTask,
+  setCourseSchedule,
+  clearCourseSchedule,
   setTaskStatus,
   getPetQuickReply,
   sendChatMessage,

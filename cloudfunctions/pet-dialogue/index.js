@@ -8,7 +8,8 @@ cloud.init({
 const QWEN_API_HOST = 'dashscope.aliyuncs.com'
 const QWEN_API_PATH = '/compatible-mode/v1/chat/completions'
 const QWEN_MODEL = process.env.QWEN_MODEL || 'qwen-plus'
-const QWEN_TIMEOUT_MS = 12000
+const QWEN_VL_MODEL = process.env.QWEN_VL_MODEL || 'qwen-vl-plus'
+const QWEN_TIMEOUT_MS = Number(process.env.QWEN_TIMEOUT_MS || 25000)
 const MAX_CHAT_MESSAGES = 10
 const MAX_HISTORY_MESSAGES = 100
 const CHAT_HISTORY_COLLECTION = 'pet_dialogue_histories'
@@ -75,6 +76,74 @@ const sanitizeMessages = (value) => {
     }))
     .filter((item) => item.content.length > 0)
     .slice(-MAX_CHAT_MESSAGES)
+}
+
+const normalizeTime = (value) => {
+  const text = normalizeText(value)
+  const match = text.match(/(\d{1,2})[:：](\d{2})/)
+  if (!match) {
+    return ''
+  }
+
+  return `${match[1].padStart(2, '0')}:${match[2]}`
+}
+
+const sanitizeWeekday = (value) => {
+  const numberValue = Number(value)
+  return numberValue >= 1 && numberValue <= 7 ? numberValue : 1
+}
+
+const sanitizeScheduleCourses = (value) => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item, index) => ({
+      id: limitText(item?.id, 40) || `course-${index + 1}`,
+      name: limitText(item?.name, 60),
+      weekday: sanitizeWeekday(item?.weekday),
+      startTime: normalizeTime(item?.startTime),
+      endTime: normalizeTime(item?.endTime),
+      location: limitText(item?.location, 40),
+      teacher: limitText(item?.teacher, 30),
+      weeks: limitText(item?.weeks, 40),
+    }))
+    .filter((item) => item.name && item.startTime && item.endTime)
+    .slice(0, 80)
+}
+
+const parseJsonObject = (raw) => {
+  const text = normalizeText(raw)
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+  const candidate = fenced?.[1] || text
+  const start = candidate.indexOf('{')
+  const end = candidate.lastIndexOf('}')
+
+  if (start < 0 || end <= start) {
+    throw new Error('Schedule recognizer returned no JSON object.')
+  }
+
+  return JSON.parse(candidate.slice(start, end + 1))
+}
+
+const getTempImageUrl = async (fileID) => {
+  const normalizedFileID = normalizeText(fileID)
+  if (!normalizedFileID) {
+    throw new Error('recognizeSchedule requires fileID.')
+  }
+
+  const result = await cloud.getTempFileURL({
+    fileList: [normalizedFileID],
+  })
+  const file = result?.fileList?.[0]
+  const tempFileURL = normalizeText(file?.tempFileURL)
+
+  if (!tempFileURL) {
+    throw new Error(file?.errMsg || 'Unable to get schedule image URL.')
+  }
+
+  return tempFileURL
 }
 
 const isMissingCollectionError = (error) => {
@@ -173,12 +242,12 @@ const clearUserChatHistory = async (openid) => {
 }
 
 // Wrap DashScope request so cloud function never exposes API key to client.
-const requestQwenReply = async (messages, maxTokens, apiKey) => {
+const requestQwenCompletion = async (messages, maxTokens, apiKey, options = {}) => {
   const payload = JSON.stringify({
-    model: QWEN_MODEL,
+    model: options.model || QWEN_MODEL,
     messages,
     max_tokens: maxTokens,
-    temperature: 0.85,
+    temperature: typeof options.temperature === 'number' ? options.temperature : 0.85,
   })
 
   return await new Promise((resolve, reject) => {
@@ -240,6 +309,54 @@ const requestQwenReply = async (messages, maxTokens, apiKey) => {
   })
 }
 
+// Wrap DashScope request so cloud function never exposes API key to client.
+const requestQwenReply = async (messages, maxTokens, apiKey) =>
+  requestQwenCompletion(messages, maxTokens, apiKey)
+
+const recognizeScheduleFromImage = async (fileID, apiKey) => {
+  const imageUrl = await getTempImageUrl(fileID)
+  const prompt = [
+    '请识别这张课程表截图，并只返回 JSON。',
+    'JSON 格式必须是：{"courses":[{"id":"course-1","name":"课程名","weekday":1,"startTime":"09:00","endTime":"10:50","location":"教室","teacher":"老师","weeks":"周次"}]}。',
+    'weekday 使用 1 到 7 表示周一到周日。',
+    '如果某字段无法识别，保留为空字符串；不要编造课程。',
+    '不要返回 markdown、解释或额外文本。',
+  ].join('\n')
+  const reply = await requestQwenCompletion(
+    [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: {
+              url: imageUrl,
+            },
+          },
+          {
+            type: 'text',
+            text: prompt,
+          },
+        ],
+      },
+    ],
+    1800,
+    apiKey,
+    {
+      model: QWEN_VL_MODEL,
+      temperature: 0.1,
+    },
+  )
+  const parsed = parseJsonObject(reply)
+  const courses = sanitizeScheduleCourses(parsed?.courses)
+
+  if (!courses.length) {
+    throw new Error('No valid courses recognized from schedule image.')
+  }
+
+  return courses
+}
+
 exports.main = async (event = {}) => {
   const { OPENID } = cloud.getWXContext()
 
@@ -247,7 +364,7 @@ exports.main = async (event = {}) => {
     throw new Error('Unable to identify current WeChat user.')
   }
 
-  const action = ['quickReply', 'chatReply', 'loadHistory', 'clearHistory'].includes(event.action) ? event.action : 'chatReply'
+  const action = ['quickReply', 'chatReply', 'loadHistory', 'clearHistory', 'recognizeSchedule'].includes(event.action) ? event.action : 'chatReply'
   const petName = limitText(event.petName, 24) || '可可'
   const personaPrompt = limitText(event.personaPrompt, 800) || defaultPetPersonaPrompt
   const systemPrompt = `${personaPrompt}\n当前宠物名：${petName}`
@@ -269,6 +386,12 @@ exports.main = async (event = {}) => {
   const apiKey = normalizeText(process.env.QWEN_API_KEY)
   if (!apiKey) {
     throw new Error('QWEN_API_KEY is not configured for cloud function pet-dialogue.')
+  }
+
+  if (action === 'recognizeSchedule') {
+    return {
+      courses: await recognizeScheduleFromImage(event.fileID, apiKey),
+    }
   }
 
   if (action === 'quickReply') {

@@ -1,5 +1,5 @@
 import { isWechatCloudConfigured } from '../config/cloud'
-import type { EmotionTag, PetActionType } from '../types/koko'
+import type { EmotionTag, PetActionType, ScheduleCourse } from '../types/koko'
 
 const localQuickReplies: Array<{ content: string; action: PetActionType }> = [
   { content: '我在这里呀，今天也陪着你。', action: 'greet' },
@@ -57,10 +57,33 @@ export interface PetDialogueHistoryMessage {
   createdAt?: string
 }
 
+const sanitizeScheduleCourse = (item: Partial<ScheduleCourse>, index: number): ScheduleCourse => ({
+  id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `course-${index + 1}`,
+  name: limitText(typeof item.name === 'string' ? item.name : '', 60),
+  weekday: ([1, 2, 3, 4, 5, 6, 7] as const).includes(item.weekday as 1 | 2 | 3 | 4 | 5 | 6 | 7)
+    ? (item.weekday as ScheduleCourse['weekday'])
+    : 1,
+  startTime: limitText(typeof item.startTime === 'string' ? item.startTime : '', 8),
+  endTime: limitText(typeof item.endTime === 'string' ? item.endTime : '', 8),
+  location: limitText(typeof item.location === 'string' ? item.location : '', 40),
+  teacher: limitText(typeof item.teacher === 'string' ? item.teacher : '', 30),
+  weeks: limitText(typeof item.weeks === 'string' ? item.weeks : '', 40),
+})
+
+const sanitizeScheduleCourses = (value: unknown): ScheduleCourse[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item, index) => sanitizeScheduleCourse((item ?? {}) as Partial<ScheduleCourse>, index))
+    .filter((item) => item.name && item.startTime && item.endTime)
+}
+
 const getWechatCloudApi = () =>
   (globalThis as { wx?: { cloud?: WechatCloudApi } }).wx?.cloud
 
-const callWechatCloudFunction = async <T>(name: string, data?: Record<string, unknown>) => {
+const callWechatCloudFunction = async <T>(name: string, data?: Record<string, unknown>, timeout = 15000) => {
   const wxCloud = getWechatCloudApi()
 
   if (!wxCloud?.callFunction) {
@@ -70,6 +93,7 @@ const callWechatCloudFunction = async <T>(name: string, data?: Record<string, un
   const response = await wxCloud.callFunction({
     name,
     data,
+    timeout,
   })
 
   return response.result as T
@@ -145,6 +169,29 @@ export const clearPetChatHistoryFromCloud = async () => {
   } catch {
     // Ignore cloud clear failures, local clear still succeeds.
   }
+}
+
+export const recognizeScheduleFromImage = async (fileID: string): Promise<ScheduleCourse[]> => {
+  const normalizedFileID = fileID.trim()
+  if (!normalizedFileID || !isWechatCloudConfigured()) {
+    throw new Error('Course schedule recognition is unavailable.')
+  }
+
+  const result = await callWechatCloudFunction<{ courses?: unknown }>(
+    'pet-dialogue',
+    {
+      action: 'recognizeSchedule',
+      fileID: normalizedFileID,
+    },
+    30000,
+  )
+  const courses = sanitizeScheduleCourses(result.courses)
+
+  if (!courses.length) {
+    throw new Error('No courses recognized from schedule image.')
+  }
+
+  return courses
 }
 
 export const createPetQuickReply = async (options?: {
