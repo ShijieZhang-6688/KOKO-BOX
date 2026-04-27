@@ -5,7 +5,7 @@ import { useKokoState } from '../composables/useKokoState'
 import { useLanguage } from '../composables/useLanguage'
 import type { Task, TaskCategory, TaskKind } from '../types/koko'
 
-const { tasks, todayTasks, completedTasks, courseSchedule, createTask, updateTask, setTaskStatus } = useKokoState()
+const { tasks, todayTasks, completedTasks, courseSchedule, createTask, updateTask, deleteTask, setTaskStatus } = useKokoState()
 const { t } = useLanguage()
 
 type StyledTaskCard = Task & {
@@ -161,6 +161,28 @@ const submitEditor = () => {
   closeEditor()
 }
 
+const confirmDeleteTask = () => {
+  if (editorMode.value !== 'edit' || !editingTaskId.value) {
+    return
+  }
+
+  uni.showModal({
+    title: t.value.plannerTask.delete,
+    content: formTitle.value,
+    confirmText: t.value.plannerTask.delete,
+    cancelText: t.value.planner.cancel,
+    confirmColor: '#b84b4b',
+    success: (result) => {
+      if (!result.confirm) {
+        return
+      }
+
+      deleteTask(editingTaskId.value)
+      closeEditor()
+    },
+  })
+}
+
 const completeTask = (taskId: string) => {
   setTaskStatus(taskId, 'completed')
 }
@@ -293,7 +315,8 @@ const undoCompleteTask = (taskId: string) => {
           />
         </view>
 
-        <view class="planner-punch-editor__actions">
+        <view class="planner-punch-editor__actions" :class="{ 'planner-punch-editor__actions--with-danger': editorMode === 'edit' }">
+          <button v-if="editorMode === 'edit'" class="planner-punch-editor__danger" @click="confirmDeleteTask">{{ t.plannerTask.delete }}</button>
           <button class="planner-punch-editor__ghost" @click="closeEditor">{{ t.planner.cancel }}</button>
           <button class="planner-punch-editor__primary" @click="submitEditor">{{ t.planner.save }}</button>
         </view>

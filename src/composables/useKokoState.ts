@@ -37,6 +37,11 @@ import {
   loadCourseScheduleFromCloud,
   saveCourseScheduleToCloud,
 } from '../services/courseScheduleCloud'
+import {
+  loadTasksFromCloud,
+  saveTasksToCloud,
+} from '../services/taskCloud'
+import { useAuth } from './useAuth'
 import { copy } from '../i18n'
 
 const STORAGE_KEY = 'koko-box-mini-state-v1'
@@ -47,6 +52,7 @@ const PET_ROTATION_FRAMES = 16
 const PET_PERSONA_PROMPT_VERSION = 4
 
 const nowIso = () => new Date().toISOString()
+const { authMode, isMockSession } = useAuth()
 const shortTime = () =>
   new Date().toLocaleTimeString(settings.value.language === 'zh' ? 'zh-CN' : 'en-US', {
     hour: '2-digit',
@@ -254,6 +260,7 @@ const defaultMetrics = (): AppMetrics => ({
 interface PersistedState {
   pet: Pet
   tasks: Task[]
+  taskCollectionUpdatedAt?: string
   courseSchedule?: CourseSchedule | null
   messages: ChatMessage[]
   devices: DeviceStatus[]
@@ -268,6 +275,7 @@ interface PersistedState {
 
 const pet = ref<Pet>(defaultPet())
 const tasks = ref<Task[]>(defaultTasks())
+const taskCollectionUpdatedAt = ref('')
 const courseSchedule = ref<CourseSchedule | null>(null)
 const messages = ref<ChatMessage[]>(defaultMessages())
 const devices = ref<DeviceStatus[]>(defaultDevices())
@@ -280,6 +288,8 @@ const petPersonaPrompt = ref(defaultPetPersonaPrompt)
 const hydrated = ref(false)
 const cloudHistoryHydrated = ref(false)
 const cloudHistoryHydrating = ref(false)
+const cloudTasksHydrated = ref(false)
+const cloudTasksHydrating = ref(false)
 const cloudCourseScheduleHydrated = ref(false)
 const cloudCourseScheduleHydrating = ref(false)
 
@@ -335,12 +345,20 @@ const sanitizePet = (value?: Partial<Pet>): Pet => {
   }
 }
 
+const latestTaskTimestamp = (items: Task[]) =>
+  items.reduce((latest, item) => {
+    const candidates = [item.createdAt, item.completedAt].filter(Boolean) as string[]
+    const itemLatest = candidates.reduce((max, value) => Math.max(max, new Date(value).getTime() || 0), 0)
+    return Math.max(latest, itemLatest)
+  }, 0)
+
 const persistState = () => {
   if (!hasUniStorage()) return
 
   const payload: PersistedState = {
     pet: sanitizePet(pet.value),
     tasks: tasks.value,
+    taskCollectionUpdatedAt: taskCollectionUpdatedAt.value,
     courseSchedule: courseSchedule.value,
     messages: messages.value,
     devices: devices.value,
@@ -360,6 +378,8 @@ const persistState = () => {
 const applySnapshot = (snapshot?: Partial<PersistedState>) => {
   pet.value = sanitizePet(snapshot?.pet)
   tasks.value = snapshot?.tasks ?? defaultTasks()
+  taskCollectionUpdatedAt.value =
+    snapshot?.taskCollectionUpdatedAt ?? new Date(latestTaskTimestamp(tasks.value) || Date.now()).toISOString()
   courseSchedule.value = snapshot?.courseSchedule ?? null
   messages.value = snapshot?.messages ?? defaultMessages()
   devices.value = snapshot?.devices ?? defaultDevices()
@@ -417,6 +437,29 @@ const logSyncEvent = (
     },
     ...syncEvents.value,
   ].slice(0, 12)
+}
+
+const persistTasksToCloud = async (snapshotTasks: Task[], snapshotUpdatedAt: string) => {
+  if (authMode.value !== 'wechat' || isMockSession.value) {
+    return
+  }
+
+  try {
+    const savedTasks = await saveTasksToCloud(snapshotTasks, snapshotUpdatedAt)
+    if (savedTasks && taskCollectionUpdatedAt.value === snapshotUpdatedAt) {
+      tasks.value = savedTasks.tasks
+      taskCollectionUpdatedAt.value = savedTasks.updatedAt || snapshotUpdatedAt
+      persistState()
+    }
+  } catch {
+    // Keep local task changes when cloud sync fails.
+  }
+}
+
+const persistTaskCollection = () => {
+  taskCollectionUpdatedAt.value = nowIso()
+  persistState()
+  void persistTasksToCloud(tasks.value, taskCollectionUpdatedAt.value)
 }
 
 const refreshSnapshot = () => {
@@ -638,7 +681,7 @@ const createTask = (payload: {
     target: 'desktop',
     actionType: 'plan-create',
   })
-  persistState()
+  persistTaskCollection()
 }
 
 const updateTask = (
@@ -649,13 +692,13 @@ const updateTask = (
 ) => {
   hydrateState()
   tasks.value = tasks.value.map((item) => (item.id === taskId ? { ...item, ...changes } : item))
-  persistState()
+  persistTaskCollection()
 }
 
 const deleteTask = (taskId: string) => {
   hydrateState()
   tasks.value = tasks.value.filter((item) => item.id !== taskId)
-  persistState()
+  persistTaskCollection()
 }
 
 const setCourseSchedule = async (schedule: CourseSchedule) => {
@@ -721,7 +764,16 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
   const targetTask = tasks.value.find((item) => item.id === taskId)
   if (!targetTask) return
 
-  tasks.value = tasks.value.map((item) => (item.id === taskId ? { ...item, status: nextStatus } : item))
+  const completedAt = nextStatus === 'completed' ? nowIso() : undefined
+  tasks.value = tasks.value.map((item) =>
+    item.id === taskId
+      ? {
+          ...item,
+          status: nextStatus,
+          completedAt,
+        }
+      : item,
+  )
 
   if (nextStatus === 'completed') {
     rewardTask(targetTask.rewardType)
@@ -764,7 +816,7 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
     })
   }
 
-  persistState()
+  persistTaskCollection()
 }
 
 const emotionReplyMap: Record<UserSettings['language'], Record<EmotionTag, string[]>> = {
@@ -844,6 +896,42 @@ const hydrateCloudChatHistory = async () => {
   }
 }
 
+const hydrateCloudTasks = async () => {
+  if (cloudTasksHydrated.value || cloudTasksHydrating.value) {
+    return
+  }
+
+  hydrateState()
+
+  if (authMode.value !== 'wechat' || isMockSession.value) {
+    return
+  }
+
+  cloudTasksHydrating.value = true
+
+  try {
+    const cloudTasks = await loadTasksFromCloud()
+    const cloudUpdatedAt = new Date(cloudTasks?.updatedAt || 0).getTime()
+    const localUpdatedAt = new Date(taskCollectionUpdatedAt.value || 0).getTime()
+
+    if (cloudTasks && cloudUpdatedAt > localUpdatedAt) {
+      tasks.value = cloudTasks.tasks
+      taskCollectionUpdatedAt.value = cloudTasks.updatedAt || nowIso()
+      persistState()
+    } else if (tasks.value.length) {
+      const nextUpdatedAt = taskCollectionUpdatedAt.value || new Date(latestTaskTimestamp(tasks.value) || Date.now()).toISOString()
+      taskCollectionUpdatedAt.value = nextUpdatedAt
+      await persistTasksToCloud(tasks.value, nextUpdatedAt)
+    }
+
+    cloudTasksHydrated.value = true
+  } catch {
+    // Ignore task hydration failures and keep local cache.
+  } finally {
+    cloudTasksHydrating.value = false
+  }
+}
+
 const hydrateCloudCourseSchedule = async () => {
   if (cloudCourseScheduleHydrated.value || cloudCourseScheduleHydrating.value) {
     return
@@ -888,6 +976,11 @@ const hydrateCloudCourseSchedule = async () => {
 const syncCourseScheduleFromCloud = async () => {
   cloudCourseScheduleHydrated.value = false
   await hydrateCloudCourseSchedule()
+}
+
+const syncTasksFromCloud = async () => {
+  cloudTasksHydrated.value = false
+  await hydrateCloudTasks()
 }
 
 const setPetPersonaPrompt = (prompt: string) => {
@@ -1196,6 +1289,7 @@ const overviewStats = computed(() => [
 
 hydrateState()
 void hydrateCloudChatHistory()
+void hydrateCloudTasks()
 void hydrateCloudCourseSchedule()
 
 export const useKokoState = () => ({
@@ -1229,6 +1323,7 @@ export const useKokoState = () => ({
   setCourseSchedule,
   clearCourseSchedule,
   syncCourseScheduleFromCloud,
+  syncTasksFromCloud,
   setTaskStatus,
   getPetQuickReply,
   sendChatMessage,

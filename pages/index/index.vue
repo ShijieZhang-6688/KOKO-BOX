@@ -11,7 +11,7 @@ type LoginMode = 'wechat' | 'guest'
 type LoginStep = 'auth-choice' | 'pet-naming'
 
 const { loading, authMode, pet: authPet, hasCompletedOnboarding, login, completeOnboarding, refreshOnboardingState } = useAuth()
-const { syncPetFromAuth, syncCourseScheduleFromCloud } = useKokoState()
+const { syncPetFromAuth, syncCourseScheduleFromCloud, syncTasksFromCloud } = useKokoState()
 const { t } = useLanguage()
 
 useWechatShare({
@@ -64,6 +64,7 @@ const chooseLoginMode = async (mode: LoginMode) => {
 
   if (result.user.onboardingDone) {
     syncPetFromAuth(result.pet)
+    await syncTasksFromCloud()
     await syncCourseScheduleFromCloud()
     redirectToHome()
     return
@@ -100,6 +101,7 @@ const submitPetName = async () => {
     ...(authPet.value ?? {}),
     name: finalPetName,
   })
+  await syncTasksFromCloud()
   await syncCourseScheduleFromCloud()
   redirectToHome()
 }

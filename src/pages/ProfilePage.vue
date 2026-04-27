@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useKokoState } from '../composables/useKokoState'
 import { useLanguage } from '../composables/useLanguage'
 
 const { user, pet: authPet, authMode, isGuestSession, loading, importWechatProfile, login } = useAuth()
-const { pet, weeklyCompletionRate, syncPetFromAuth, syncCourseScheduleFromCloud } = useKokoState()
+const { pet, weeklyCompletionRate, syncPetFromAuth, syncCourseScheduleFromCloud, syncTasksFromCloud } = useKokoState()
 const { t } = useLanguage()
 
+const avatarLoadFailed = ref(false)
 const displayName = computed(() => user.value?.nickName || (isGuestSession.value ? t.value.profile.guest : 'Koko Friend'))
 const accountModeLabel = computed(() => (isGuestSession.value ? t.value.profile.guestMode : t.value.profile.wechatAccount))
 const profileInitial = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'K')
 const accountHint = computed(() => (isGuestSession.value ? t.value.profile.guestHint : t.value.profile.accountHint))
 const petStageLabel = computed(() => t.value.profile.stages[pet.value.stage] ?? pet.value.stage)
+const shouldShowAvatarImage = computed(() => Boolean(user.value?.avatarUrl && !avatarLoadFailed.value))
 
 const openSettings = () => {
   uni.navigateTo({
@@ -37,6 +39,18 @@ const handleChooseAvatar = (event: { detail?: { avatarUrl?: string } }) => {
   })
 }
 
+const handleAvatarError = (event: { detail?: { errMsg?: string } }) => {
+  avatarLoadFailed.value = true
+  console.warn('[ProfilePage] avatar image load failed:', event?.detail?.errMsg ?? user.value?.avatarUrl)
+}
+
+watch(
+  () => user.value?.avatarUrl,
+  () => {
+    avatarLoadFailed.value = false
+  },
+)
+
 watch(
   () => authPet.value,
   (value) => {
@@ -49,6 +63,7 @@ onMounted(async () => {
   const result = await login(authMode.value ?? 'wechat')
   syncPetFromAuth(result.pet)
   if (authMode.value !== 'guest') {
+    await syncTasksFromCloud()
     await syncCourseScheduleFromCloud()
   }
 })
@@ -64,7 +79,13 @@ onMounted(async () => {
           open-type="chooseAvatar"
           @chooseavatar="handleChooseAvatar"
         >
-          <image v-if="user?.avatarUrl" class="profile-avatar__image" :src="user.avatarUrl" mode="aspectFill" />
+          <image
+            v-if="shouldShowAvatarImage"
+            class="profile-avatar__image"
+            :src="user?.avatarUrl"
+            mode="aspectFill"
+            @error="handleAvatarError"
+          />
           <view v-else class="profile-avatar__fallback">{{ profileInitial }}</view>
         </button>
         <view v-else class="profile-avatar">

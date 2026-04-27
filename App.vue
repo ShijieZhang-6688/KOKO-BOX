@@ -4,7 +4,7 @@ import { useAuth } from './src/composables/useAuth'
 import { useKokoState } from './src/composables/useKokoState'
 
 const { authMode, login } = useAuth()
-const { syncPetFromAuth, syncCourseScheduleFromCloud } = useKokoState()
+const { syncPetFromAuth, syncCourseScheduleFromCloud, syncTasksFromCloud } = useKokoState()
 
 const syncSessionPetFromCloud = async () => {
   const mode = authMode.value
@@ -17,6 +17,7 @@ const syncSessionPetFromCloud = async () => {
     const result = await login(mode)
     syncPetFromAuth(result.pet)
     if (mode !== 'guest' && !result.isMock) {
+      await syncTasksFromCloud()
       await syncCourseScheduleFromCloud()
     }
   } catch {
