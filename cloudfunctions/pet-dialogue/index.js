@@ -203,18 +203,116 @@ const sanitizeScheduleCourses = (value) => {
     .slice(0, 80)
 }
 
+const repairJsonText = (value) => {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!text) {
+    return text
+  }
+
+  const stack = []
+  let inString = false
+  let escaped = false
+
+  for (const char of text) {
+    if (escaped) {
+      escaped = false
+      continue
+    }
+
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+
+    if (inString) {
+      continue
+    }
+
+    if (char === '{') {
+      stack.push('}')
+      continue
+    }
+
+    if (char === '[') {
+      stack.push(']')
+      continue
+    }
+
+    if ((char === '}' || char === ']') && stack.length && stack[stack.length - 1] === char) {
+      stack.pop()
+    }
+  }
+
+  const withoutTrailingComma = text.replace(/,\s*$/, '').replace(/,\s*([}\]])/g, '$1')
+  return `${withoutTrailingComma}${stack.reverse().join('')}`
+}
+
 const parseJsonObject = (raw) => {
   const text = normalizeText(raw)
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
   const candidate = fenced?.[1] || text
   const start = candidate.indexOf('{')
-  const end = candidate.lastIndexOf('}')
 
-  if (start < 0 || end <= start) {
+  if (start < 0) {
     throw new Error('Schedule recognizer returned no JSON object.')
   }
 
-  return JSON.parse(candidate.slice(start, end + 1))
+  const jsonCandidate = candidate.slice(start)
+
+  try {
+    return JSON.parse(jsonCandidate)
+  } catch {
+    try {
+      return JSON.parse(repairJsonText(jsonCandidate))
+    } catch {
+      const extracted = extractCoursesFromLooseJson(jsonCandidate)
+      if (extracted.length) {
+        return {
+          courses: extracted,
+        }
+      }
+
+      throw new Error(`Schedule recognizer returned invalid JSON: ${limitText(jsonCandidate, 240)}`)
+    }
+  }
+}
+
+const extractFieldValue = (chunk, fieldName) => {
+  const pattern = new RegExp(`"${fieldName}"\\s*:\\s*("(?:\\\\.|[^"])*"|\\d+)`, 'i')
+  const match = chunk.match(pattern)
+  if (!match) {
+    return ''
+  }
+
+  const rawValue = match[1]
+  if (rawValue.startsWith('"')) {
+    return rawValue.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+  }
+
+  return rawValue
+}
+
+const extractCoursesFromLooseJson = (value) => {
+  const text = typeof value === 'string' ? value : ''
+  const chunks = text.split(/(?="id"\s*:)/i).slice(1)
+
+  return chunks
+    .map((chunk, index) => ({
+      id: extractFieldValue(chunk, 'id') || `course-${index + 1}`,
+      name: extractFieldValue(chunk, 'name'),
+      weekday: extractFieldValue(chunk, 'weekday'),
+      startTime: extractFieldValue(chunk, 'startTime'),
+      endTime: extractFieldValue(chunk, 'endTime'),
+      location: extractFieldValue(chunk, 'location'),
+      teacher: extractFieldValue(chunk, 'teacher'),
+      weeks: extractFieldValue(chunk, 'weeks'),
+    }))
+    .filter((item) => item.name && item.weekday && item.startTime && item.endTime)
 }
 
 const getTempImageUrl = async (fileID) => {
@@ -338,6 +436,7 @@ const requestQwenCompletion = async (messages, maxTokens, apiKey, options = {}) 
     messages,
     max_tokens: maxTokens,
     temperature: typeof options.temperature === 'number' ? options.temperature : 0.85,
+    ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
   })
 
   return await new Promise((resolve, reject) => {
@@ -409,10 +508,12 @@ const recognizeScheduleFromImage = async (fileID, apiKey) => {
     'Read this weekly timetable screenshot and return JSON only.',
     'This is an XJTLU-style timetable grid with columns MON,TUE,WED,THU,FRI,SAT,SUN and time labels on the left.',
     'Each colored block is one course.',
-    'Return this exact shape: {"courses":[{"id":"course-1","name":"DTS208TC-Comp.Lab-D1/5","weekday":5,"startTime":"09:00","endTime":"10:50","location":"TC-G-2020","teacher":"Lingxiao Zhao, Yuxuan Zhao","weeks":"Week: 1-13","rawText":"all text inside the block"}]}.',
+    'Return compact minified JSON in this exact shape: {"courses":[{"id":"course-1","name":"DTS208TC-Comp.Lab-D1/5","weekday":5,"startTime":"09:00","endTime":"10:50","location":"TC-G-2020","teacher":"Lingxiao Zhao, Yuxuan Zhao","weeks":"Week: 1-13"}]}.',
     'weekday must be 1-7 for Monday-Sunday.',
     'If a field is uncertain, keep it as an empty string, but do not omit visible courses.',
+    'Do not include rawText or any extra fields.',
     'Do not return markdown or explanation.',
+    'Do not include any text before or after the JSON.',
   ].join('\n')
   const reply = await requestQwenCompletion(
     [
@@ -432,18 +533,21 @@ const recognizeScheduleFromImage = async (fileID, apiKey) => {
         ],
       },
     ],
-    800,
+    700,
     apiKey,
     {
       model: QWEN_VL_MODEL,
       temperature: 0.1,
+      responseFormat: {
+        type: 'json_object',
+      },
     },
   )
   const parsed = parseJsonObject(reply)
   const courses = sanitizeScheduleCourses(parsed?.courses)
 
   if (!courses.length) {
-    throw new Error('No valid courses recognized from schedule image.')
+    throw new Error(`Schedule recognition raw reply: ${limitText(reply, 240)}`)
   }
 
   return courses

@@ -43,6 +43,7 @@ const iconOptions = ['🌿', '✏️', '📌', '⏰', '🏠', '🍰']
 const colorOptions = ['#d9cff3', '#cfefd7', '#ffe9ad', '#ffd3dc', '#d6e8fa', '#ffd8c9']
 const showCreateChoice = ref(false)
 const showScheduleImporter = ref(false)
+const showSchedulePanel = ref(false)
 const importingSchedule = ref(false)
 const scheduleImportError = ref('')
 const editorVisible = ref(false)
@@ -128,7 +129,7 @@ const chooseScheduleImage = () =>
   new Promise<string>((resolve, reject) => {
     uni.chooseImage({
       count: 1,
-      sizeType: ['compressed'],
+      sizeType: ['original'],
       sourceType: ['album'],
       success: (result) => {
         const filePath = result.tempFilePaths?.[0]
@@ -164,6 +165,15 @@ const openScheduleImporter = () => {
   showScheduleImporter.value = true
 }
 
+const toggleSchedulePanel = () => {
+  if (!hasCourseSchedule.value) {
+    openScheduleImporter()
+    return
+  }
+
+  showSchedulePanel.value = !showSchedulePanel.value
+}
+
 const getScheduleImportErrorMessage = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error || '')
 
@@ -171,15 +181,11 @@ const getScheduleImportErrorMessage = (error: unknown) => {
     return 'AI 识别超时，请重新部署 pet-dialogue 云函数并确认超时时间为 60 秒后再试。'
   }
 
-  if (message.includes('No courses recognized') || message.includes('No valid courses')) {
-    return '识别失败，请换一张更清晰的课表截图。'
-  }
-
   if (message.includes('QWEN_API_KEY')) {
     return 'AI 密钥未配置，请检查 pet-dialogue 云函数环境变量。'
   }
 
-  return '识别失败，请换一张更清晰的课表截图。'
+  return message || '识别失败，请查看云函数日志。'
 }
 
 const closeScheduleImporter = () => {
@@ -205,6 +211,7 @@ const importScheduleFromScreenshot = async () => {
     }
 
     setCourseSchedule(nextSchedule)
+    showSchedulePanel.value = true
     showScheduleImporter.value = false
     uni.showToast({ title: '课表已导入', icon: 'success' })
   } catch (error) {
@@ -314,7 +321,7 @@ const undoCompleteTask = (taskId: string) => {
         <view v-else class="planner-punch-ddl-empty">暂无临近截止事项</view>
       </view>
 
-      <view v-if="hasCourseSchedule" class="planner-punch-section planner-schedule-section">
+      <view v-if="hasCourseSchedule && showSchedulePanel" class="planner-punch-section planner-schedule-section">
         <view class="planner-punch-section__title">我的课表</view>
         <view class="planner-schedule-card">
           <view class="planner-schedule-grid">
@@ -379,7 +386,7 @@ const undoCompleteTask = (taskId: string) => {
 
     </view>
 
-    <button class="planner-schedule-fab" @click="openScheduleImporter">我的课表</button>
+    <button class="planner-schedule-fab" @click="toggleSchedulePanel">{{ hasCourseSchedule && showSchedulePanel ? '收起课表' : '我的课表' }}</button>
 
     <view v-if="showCreateChoice" class="planner-punch-choice-mask" @click="closeCreateChoice">
       <view class="planner-punch-choice" @click.stop>
