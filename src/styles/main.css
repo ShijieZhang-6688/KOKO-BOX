@@ -2813,7 +2813,7 @@ button {
 .planner-punch-create--corner {
   min-width: 72px;
   position: absolute;
-  right: 0;
+  right: 92px;
   top: -2px;
 }
 
@@ -3030,9 +3030,106 @@ button {
   padding: 12px;
 }
 
+.planner-schedule-page {
+  background: #fffaf0;
+  min-height: 100vh;
+  padding: calc(142px + env(safe-area-inset-top)) 0 calc(8px + env(safe-area-inset-bottom));
+}
+
+.planner-schedule-topbar {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 42px minmax(0, 1fr) 94px;
+  left: 0;
+  padding: calc(84px + env(safe-area-inset-top)) 14px 8px;
+  pointer-events: none;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 8;
+}
+
+.planner-schedule-back {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(196, 156, 82, 0.18);
+  border-radius: 999px;
+  box-shadow: 0 10px 20px rgba(105, 76, 35, 0.12);
+  color: #6f4e20;
+  display: flex;
+  font-size: 1.75rem;
+  font-weight: 900;
+  height: 42px;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  pointer-events: auto;
+  width: 42px;
+}
+
+.planner-schedule-back::after {
+  border: 0;
+}
+
+.planner-schedule-title {
+  color: #2d2b2d;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.planner-schedule-page-body {
+  height: calc(100vh - 142px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: hidden;
+}
+
+.planner-schedule-card--page {
+  background: transparent;
+  border: 0;
+  border-radius: 20px;
+  box-shadow: none;
+  padding: 0;
+}
+
+.planner-schedule-grid--page {
+  height: 100%;
+  overflow: auto;
+  padding: 0 0 8px;
+}
+
+.planner-schedule-empty-page {
+  align-content: center;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(196, 156, 82, 0.16);
+  border-radius: 22px;
+  box-shadow: 0 14px 28px rgba(176, 124, 55, 0.1);
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  min-height: 260px;
+  padding: 22px;
+  text-align: center;
+}
+
+.planner-schedule-empty-page__title {
+  color: #6f4e20;
+  font-size: 1.08rem;
+  font-weight: 900;
+}
+
+.planner-schedule-empty-page__copy {
+  color: #7f6b5b;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .planner-schedule-grid {
   display: grid;
-  grid-template-columns: 54px repeat(7, minmax(76px, 1fr));
+  grid-template-columns: 64px repeat(7, minmax(86px, 1fr));
   overflow-x: auto;
 }
 
@@ -3041,15 +3138,18 @@ button {
 .planner-schedule-cell {
   border-bottom: 1px solid rgba(196, 156, 82, 0.14);
   border-right: 1px solid rgba(196, 156, 82, 0.14);
-  min-height: 46px;
+  min-height: 54px;
   padding: 8px 6px;
 }
 
 .planner-schedule-head {
-  background: #fff7e8;
+  background: #fff6e6;
   color: #805d2c;
   font-size: 0.74rem;
   font-weight: 900;
+  position: sticky;
+  top: 0;
+  z-index: 2;
   text-align: center;
 }
 
@@ -3065,7 +3165,7 @@ button {
 }
 
 .planner-schedule-cell {
-  background: rgba(255, 247, 232, 0.42);
+  background: rgba(255, 252, 246, 0.78);
   display: grid;
   gap: 6px;
 }
@@ -3114,16 +3214,29 @@ button {
   padding: 0 18px;
 }
 
+.planner-schedule-change--top {
+  box-shadow: 0 12px 24px rgba(105, 76, 35, 0.16);
+  font-size: 0.78rem;
+  justify-self: end;
+  min-height: 36px;
+  min-width: 86px;
+  padding: 0 12px;
+  pointer-events: auto;
+}
+
 .planner-schedule-fab {
   background: #ffffff;
-  border: 1px solid rgba(196, 156, 82, 0.22);
-  bottom: calc(90px + env(safe-area-inset-bottom));
-  box-shadow: 0 12px 24px rgba(105, 76, 35, 0.16);
-  color: #805d2c;
-  min-height: 42px;
-  padding: 0 18px;
-  position: fixed;
-  right: 14px;
+  border: 1px solid rgba(196, 156, 82, 0.18);
+  box-shadow: 0 8px 18px rgba(176, 124, 55, 0.12);
+  color: #8d6732;
+  font-size: 0.84rem;
+  font-weight: 800;
+  min-height: 32px;
+  min-width: 88px;
+  padding: 0 14px;
+  position: absolute;
+  right: 0;
+  top: -2px;
   z-index: 4;
 }
 

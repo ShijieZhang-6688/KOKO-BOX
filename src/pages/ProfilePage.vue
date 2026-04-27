@@ -4,7 +4,7 @@ import { useAuth } from '../composables/useAuth'
 import { useKokoState } from '../composables/useKokoState'
 
 const { user, pet: authPet, authMode, isGuestSession, loading, importWechatProfile, login } = useAuth()
-const { pet, weeklyCompletionRate, syncPetFromAuth } = useKokoState()
+const { pet, weeklyCompletionRate, syncPetFromAuth, syncCourseScheduleFromCloud } = useKokoState()
 
 const displayName = computed(() => user.value?.nickName || (isGuestSession.value ? '游客' : 'Koko Friend'))
 const accountModeLabel = computed(() => (isGuestSession.value ? '游客模式' : '微信账号'))
@@ -47,6 +47,9 @@ watch(
 onMounted(async () => {
   const result = await login(authMode.value ?? 'wechat')
   syncPetFromAuth(result.pet)
+  if (authMode.value !== 'guest') {
+    await syncCourseScheduleFromCloud()
+  }
 })
 </script>
 

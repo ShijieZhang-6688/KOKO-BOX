@@ -65,6 +65,15 @@
       }
     },
     {
+      "path": "pages/schedule/index",
+      "style": {
+        "navigationBarTitleText": "我的课表",
+        "navigationStyle": "custom",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
+      }
+    },
+    {
       "path": "pages/planner-create/index",
       "style": {
         "navigationBarTitleText": "New Task"

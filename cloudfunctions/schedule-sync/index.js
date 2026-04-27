@@ -5,6 +5,7 @@ cloud.init({
 })
 
 const db = cloud.database()
+const _ = db.command
 const schedules = db.collection('course_schedules')
 const now = () => new Date().toISOString()
 
@@ -47,7 +48,15 @@ const sanitizeSchedule = (value) => {
 }
 
 const keepSingleByOpenid = async (openid) => {
-  const result = await schedules.where({ _openid: openid }).limit(100).get()
+  const result = await schedules
+    .where(
+      _.or([
+        { _openid: openid },
+        { ownerOpenid: openid },
+      ]),
+    )
+    .limit(100)
+    .get()
   const records = result.data || []
 
   if (!records.length) {
@@ -105,6 +114,8 @@ exports.main = async (event = {}) => {
   }
 
   const payload = {
+    _openid: OPENID,
+    ownerOpenid: OPENID,
     scheduleId: nextSchedule.id,
     importedAt: nextSchedule.importedAt,
     sourceFileID: nextSchedule.sourceFileID,

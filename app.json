@@ -7,6 +7,7 @@
     "pages/stats/index",
     "pages/profile/index",
     "pages/planner/index",
+    "pages/schedule/index",
     "pages/hardware/index",
     "pages/settings/index"
   ],

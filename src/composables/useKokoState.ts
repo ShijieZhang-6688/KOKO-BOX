@@ -43,6 +43,7 @@ const CHAT_SESSION_ID = 'main-session'
 const MAX_CHAT_HISTORY = 100
 const FEED_DIGEST_MS = 30 * 60 * 1000
 const PET_ROTATION_FRAMES = 16
+const PET_PERSONA_PROMPT_VERSION = 2
 
 const nowIso = () => new Date().toISOString()
 const shortTime = () =>
@@ -261,6 +262,7 @@ interface PersistedState {
   snapshots: DailySnapshot[]
   metrics: AppMetrics
   petPersonaPrompt?: string
+  petPersonaPromptVersion?: number
 }
 
 const pet = ref<Pet>(defaultPet())
@@ -347,6 +349,7 @@ const persistState = () => {
     snapshots: snapshots.value,
     metrics: metrics.value,
     petPersonaPrompt: petPersonaPrompt.value,
+    petPersonaPromptVersion: PET_PERSONA_PROMPT_VERSION,
   }
 
   uni.setStorageSync(STORAGE_KEY, payload)
@@ -367,7 +370,10 @@ const applySnapshot = (snapshot?: Partial<PersistedState>) => {
   archive.value = snapshot?.archive ?? defaultArchive()
   snapshots.value = snapshot?.snapshots ?? defaultSnapshots()
   metrics.value = snapshot?.metrics ?? defaultMetrics()
-  petPersonaPrompt.value = snapshot?.petPersonaPrompt ?? defaultPetPersonaPrompt
+  petPersonaPrompt.value =
+    snapshot?.petPersonaPromptVersion === PET_PERSONA_PROMPT_VERSION && snapshot?.petPersonaPrompt?.trim()
+      ? snapshot.petPersonaPrompt.trim()
+      : defaultPetPersonaPrompt
 }
 
 const hydrateState = () => {
@@ -851,6 +857,11 @@ const hydrateCloudCourseSchedule = async () => {
   }
 }
 
+const syncCourseScheduleFromCloud = async () => {
+  cloudCourseScheduleHydrated.value = false
+  await hydrateCloudCourseSchedule()
+}
+
 const setPetPersonaPrompt = (prompt: string) => {
   petPersonaPrompt.value = prompt.trim() || defaultPetPersonaPrompt
   persistState()
@@ -1176,6 +1187,7 @@ export const useKokoState = () => ({
   deleteTask,
   setCourseSchedule,
   clearCourseSchedule,
+  syncCourseScheduleFromCloud,
   setTaskStatus,
   getPetQuickReply,
   sendChatMessage,

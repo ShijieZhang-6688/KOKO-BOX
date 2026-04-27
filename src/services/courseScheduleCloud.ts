@@ -72,14 +72,10 @@ export const loadCourseScheduleFromCloud = async () => {
     return null
   }
 
-  try {
-    const result = await callWechatCloudFunction<{ schedule?: unknown }>('schedule-sync', {
-      action: 'load',
-    })
-    return normalizeSchedule(result.schedule)
-  } catch {
-    return null
-  }
+  const result = await callWechatCloudFunction<{ schedule?: unknown }>('schedule-sync', {
+    action: 'load',
+  })
+  return normalizeSchedule(result.schedule)
 }
 
 export const saveCourseScheduleToCloud = async (schedule: CourseSchedule) => {
