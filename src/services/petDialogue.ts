@@ -47,6 +47,8 @@ const limitText = (value: string, maxLength: number) => {
   return normalized.length > maxLength ? normalized.slice(0, maxLength) : normalized
 }
 
+const normalizeReplyText = (value: string) => value.replace(/\s+/g, ' ').trim()
+
 interface WechatCloudApi {
   callFunction?: (options: unknown) => Promise<{ result: unknown }>
 }
@@ -119,7 +121,7 @@ const requestPetReplyFromCloud = async (payload: {
       ? result.history
           .map((item) => ({
             role: item?.role === 'assistant' ? 'assistant' : 'user',
-            content: limitText(typeof item?.content === 'string' ? item.content : '', 280),
+            content: limitText(typeof item?.content === 'string' ? item.content : '', 2000),
             createdAt: typeof item?.createdAt === 'string' ? item.createdAt : undefined,
           }))
           .filter((item) => item.content.length > 0)
@@ -139,7 +141,7 @@ const requestPetHistoryFromCloud = async () => {
   return result.history
     .map((item) => ({
       role: item?.role === 'assistant' ? 'assistant' : 'user',
-      content: limitText(typeof item?.content === 'string' ? item.content : '', 280),
+      content: limitText(typeof item?.content === 'string' ? item.content : '', 2000),
       createdAt: typeof item?.createdAt === 'string' ? item.createdAt : undefined,
     }))
     .filter((item) => item.content.length > 0)
@@ -214,7 +216,7 @@ export const createPetQuickReply = async (options?: {
     })
 
     return {
-      content: limitText(reply, 24),
+      content: normalizeReplyText(reply.content),
       action: fallback.action,
     }
   } catch {
@@ -249,7 +251,7 @@ export const createPetChatReply = async (options: {
     })
 
     return {
-      content: limitText(reply.content, 60),
+      content: normalizeReplyText(reply.content),
       history: reply.history,
     }
   } catch {

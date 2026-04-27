@@ -119,6 +119,11 @@ const lastAssistantMessage = computed(() => {
   return assistant?.content ?? 'Stay with me for a while.'
 })
 
+const petBubbleSizeClass = computed(() => ({
+  'pet-bubble--medium': petBubble.value.length > 28,
+  'pet-bubble--long': petBubble.value.length > 54,
+}))
+
 const overlayChatCollapsed = computed(() => historyOpen.value || gameDrawerOpen.value)
 const shouldShowPetLottie = computed(() => !gameDrawerOpen.value && !historyOpen.value)
 const petFacingMirrored = computed(() => rotationFrame.value > 7)
@@ -156,12 +161,14 @@ const queueIdleReset = (duration = 1800) => {
 }
 
 const showPetBubbleFor = (message: string, duration = 2200) => {
-  petBubble.value = message
+  const normalizedMessage = message.replace(/\s+/g, ' ').trim()
+  const readableDuration = Math.min(7000, Math.max(duration, 1800 + normalizedMessage.length * 90))
+  petBubble.value = normalizedMessage
   showBubble.value = true
   if (bubbleTimer) clearTimeout(bubbleTimer)
   bubbleTimer = setTimeout(() => {
     showBubble.value = false
-  }, duration)
+  }, readableDuration)
 }
 
 const triggerPetAction = (action: PetActionType, message: string, duration = 2200) => {
@@ -324,7 +331,7 @@ onMounted(() => {
       </view>
 
       <view class="home-stage">
-        <view v-if="showBubble" class="pet-bubble">{{ petBubble }}</view>
+        <view v-if="showBubble" class="pet-bubble" :class="petBubbleSizeClass">{{ petBubble }}</view>
 
         <view class="home-stage__model">
           <view
@@ -631,17 +638,40 @@ onMounted(() => {
 }
 
 .pet-bubble {
+  align-items: flex-start;
   background: rgba(255, 255, 255, 0.94);
   border-radius: 28rpx;
+  box-shadow: 0 18rpx 42rpx rgba(63, 104, 123, 0.16);
   color: #305163;
+  display: inline-flex;
   font-size: 24rpx;
-  left: 12rpx;
+  height: auto;
+  left: 18rpx;
   line-height: 1.5;
-  max-width: 390rpx;
+  max-width: calc(100% - 168rpx);
+  min-height: 0;
+  min-width: 180rpx;
+  overflow: visible;
   padding: 18rpx 22rpx;
   position: absolute;
-  top: 180rpx;
+  text-align: left;
+  top: 128rpx;
+  white-space: normal;
+  word-break: break-word;
+  word-wrap: break-word;
   z-index: 6;
+}
+
+.pet-bubble--medium {
+  max-width: calc(100% - 144rpx);
+  min-width: 300rpx;
+}
+
+.pet-bubble--long {
+  left: 12rpx;
+  max-width: calc(100% - 138rpx);
+  min-width: 420rpx;
+  top: 104rpx;
 }
 
 .pet-bubble::after {

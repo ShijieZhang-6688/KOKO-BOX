@@ -12,6 +12,9 @@ const QWEN_VL_MODEL = process.env.QWEN_VL_MODEL || 'qwen-vl-plus'
 const QWEN_TIMEOUT_MS = Number(process.env.QWEN_TIMEOUT_MS || 50000)
 const MAX_CHAT_MESSAGES = 10
 const MAX_HISTORY_MESSAGES = 100
+const MAX_STORED_MESSAGE_CONTENT = 2000
+const MAX_USER_MESSAGE_CONTENT = 1200
+const MAX_PERSONA_PROMPT_CONTENT = 5000
 const CHAT_HISTORY_COLLECTION = 'pet_dialogue_histories'
 
 const db = cloud.database()
@@ -49,7 +52,7 @@ const safeIsoDate = (value) => {
 
 const sanitizeStoredHistoryItem = (value) => ({
   role: sanitizeRole(value?.role),
-  content: limitText(value?.content, 280),
+  content: limitText(value?.content, MAX_STORED_MESSAGE_CONTENT),
   createdAt: safeIsoDate(value?.createdAt),
 })
 
@@ -72,7 +75,7 @@ const sanitizeMessages = (value) => {
   return value
     .map((item) => ({
       role: sanitizeRole(item?.role),
-      content: limitText(item?.content, 280),
+      content: limitText(item?.content, MAX_STORED_MESSAGE_CONTENT),
     }))
     .filter((item) => item.content.length > 0)
     .slice(-MAX_CHAT_MESSAGES)
@@ -562,7 +565,7 @@ exports.main = async (event = {}) => {
 
   const action = ['quickReply', 'chatReply', 'loadHistory', 'clearHistory', 'recognizeSchedule'].includes(event.action) ? event.action : 'chatReply'
   const petName = limitText(event.petName, 24) || '可可'
-  const personaPrompt = limitText(event.personaPrompt, 800) || defaultPetPersonaPrompt
+  const personaPrompt = limitText(event.personaPrompt, MAX_PERSONA_PROMPT_CONTENT) || defaultPetPersonaPrompt
   const systemPrompt = `${personaPrompt}\n当前宠物名：${petName}`
 
   if (action === 'loadHistory') {
@@ -602,16 +605,16 @@ exports.main = async (event = {}) => {
           content: '用户刚刚点击或双击了你，请随机说一句亲近的短问候。',
         },
       ],
-      36,
+      120,
       apiKey,
     )
 
     return {
-      content: limitText(reply, 24),
+      content: normalizeText(reply),
     }
   }
 
-  const userMessage = limitText(event.userMessage, 280)
+  const userMessage = limitText(event.userMessage, MAX_USER_MESSAGE_CONTENT)
   const messageFromContext = sanitizeMessages(event.messages)
     .reverse()
     .find((item) => item.role === 'user')?.content
@@ -655,7 +658,7 @@ exports.main = async (event = {}) => {
       },
       ...chatMessages,
     ],
-    80,
+    260,
     apiKey,
   )
 
@@ -663,13 +666,13 @@ exports.main = async (event = {}) => {
     ...nextHistory,
     {
       role: 'assistant',
-      content: limitText(reply, 60),
+      content: limitText(reply, MAX_STORED_MESSAGE_CONTENT),
       createdAt: new Date().toISOString(),
     },
   ])
 
   return {
-    content: limitText(reply, 60),
+    content: normalizeText(reply),
     history: savedHistory,
   }
 }
