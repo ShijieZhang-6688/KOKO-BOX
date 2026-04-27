@@ -43,7 +43,7 @@ const CHAT_SESSION_ID = 'main-session'
 const MAX_CHAT_HISTORY = 100
 const FEED_DIGEST_MS = 30 * 60 * 1000
 const PET_ROTATION_FRAMES = 16
-const PET_PERSONA_PROMPT_VERSION = 2
+const PET_PERSONA_PROMPT_VERSION = 4
 
 const nowIso = () => new Date().toISOString()
 const shortTime = () =>
