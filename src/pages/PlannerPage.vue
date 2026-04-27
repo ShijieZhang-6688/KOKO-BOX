@@ -168,7 +168,7 @@ const getScheduleImportErrorMessage = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error || '')
 
   if (message.includes('FUNCTIONS_TIME_LIMIT_EXCEEDED') || message.includes('timed out')) {
-    return 'AI 识别超时，请重新部署 pet-dialogue 云函数并确认超时时间为 30 秒后再试。'
+    return 'AI 识别超时，请重新部署 pet-dialogue 云函数并确认超时时间为 60 秒后再试。'
   }
 
   if (message.includes('No courses recognized') || message.includes('No valid courses')) {

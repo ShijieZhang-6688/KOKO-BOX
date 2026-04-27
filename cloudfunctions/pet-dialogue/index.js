@@ -9,7 +9,7 @@ const QWEN_API_HOST = 'dashscope.aliyuncs.com'
 const QWEN_API_PATH = '/compatible-mode/v1/chat/completions'
 const QWEN_MODEL = process.env.QWEN_MODEL || 'qwen-plus'
 const QWEN_VL_MODEL = process.env.QWEN_VL_MODEL || 'qwen-vl-plus'
-const QWEN_TIMEOUT_MS = Number(process.env.QWEN_TIMEOUT_MS || 25000)
+const QWEN_TIMEOUT_MS = Number(process.env.QWEN_TIMEOUT_MS || 50000)
 const MAX_CHAT_MESSAGES = 10
 const MAX_HISTORY_MESSAGES = 100
 const CHAT_HISTORY_COLLECTION = 'pet_dialogue_histories'
@@ -78,9 +78,35 @@ const sanitizeMessages = (value) => {
     .slice(-MAX_CHAT_MESSAGES)
 }
 
+const WEEKDAY_MAP = {
+  mon: 1,
+  monday: 1,
+  tue: 2,
+  tues: 2,
+  tuesday: 2,
+  wed: 3,
+  wednesday: 3,
+  thu: 4,
+  thur: 4,
+  thurs: 4,
+  thursday: 4,
+  fri: 5,
+  friday: 5,
+  sat: 6,
+  saturday: 6,
+  sun: 7,
+  sunday: 7,
+}
+
+const splitRawLines = (value) =>
+  (typeof value === 'string' ? value : '')
+    .split(/\r?\n|\\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
 const normalizeTime = (value) => {
   const text = normalizeText(value)
-  const match = text.match(/(\d{1,2})[:：](\d{2})/)
+  const match = text.match(/(\d{1,2})[:：.](\d{2})/)
   if (!match) {
     return ''
   }
@@ -88,9 +114,69 @@ const normalizeTime = (value) => {
   return `${match[1].padStart(2, '0')}:${match[2]}`
 }
 
+const extractTimeRange = (value) => {
+  const text = normalizeText(value)
+  const matches = [...text.matchAll(/(\d{1,2})[:：.](\d{2})/g)].map((item) => `${item[1].padStart(2, '0')}:${item[2]}`)
+
+  if (matches.length >= 2) {
+    return {
+      startTime: matches[0],
+      endTime: matches[1],
+    }
+  }
+
+  return {
+    startTime: '',
+    endTime: '',
+  }
+}
+
 const sanitizeWeekday = (value) => {
+  if (typeof value === 'string') {
+    const normalized = value.toLowerCase().replace(/[^a-z]/g, '')
+    if (WEEKDAY_MAP[normalized]) {
+      return WEEKDAY_MAP[normalized]
+    }
+  }
+
   const numberValue = Number(value)
   return numberValue >= 1 && numberValue <= 7 ? numberValue : 1
+}
+
+const deriveCourseFields = (item) => {
+  const rawLines = [
+    ...splitRawLines(item?.rawText),
+    ...splitRawLines(item?.text),
+    ...splitRawLines(item?.content),
+  ]
+  const rawText = rawLines.join('\n')
+  const rawTimeRange = extractTimeRange(
+    `${item?.timeRange || ''} ${item?.time || ''} ${item?.startTime || ''} ${item?.endTime || ''} ${rawText}`,
+  )
+  const weekLine = rawLines.find((line) => /week/i.test(line)) || (typeof item?.weeks === 'string' ? item.weeks : '')
+  const locationLine =
+    rawLines.find((line) => /^[A-Z]{1,4}-[A-Z]-?\d+/i.test(line) || /^TC-/i.test(line) || /^[A-Z]{1,4}-\d{4}/i.test(line)) ||
+    item?.location ||
+    ''
+  const filteredNameLines = rawLines.filter(
+    (line) => !/week/i.test(line) && !/^\d{1,2}[:：.]\d{2}/.test(line) && !/^[A-Z]{1,4}-[A-Z]-?\d+/i.test(line) && !/^TC-/i.test(line),
+  )
+  const name = typeof item?.name === 'string' && item.name.trim() ? item.name : filteredNameLines.slice(0, 2).join(' ')
+  const teacher =
+    typeof item?.teacher === 'string' && item.teacher.trim()
+      ? item.teacher
+      : filteredNameLines.length > 2
+        ? filteredNameLines.slice(2).join(', ')
+        : ''
+
+  return {
+    name,
+    teacher,
+    location: locationLine,
+    weeks: weekLine,
+    startTime: normalizeTime(item?.startTime) || rawTimeRange.startTime,
+    endTime: normalizeTime(item?.endTime) || rawTimeRange.endTime,
+  }
 }
 
 const sanitizeScheduleCourses = (value) => {
@@ -99,16 +185,20 @@ const sanitizeScheduleCourses = (value) => {
   }
 
   return value
-    .map((item, index) => ({
-      id: limitText(item?.id, 40) || `course-${index + 1}`,
-      name: limitText(item?.name, 60),
-      weekday: sanitizeWeekday(item?.weekday),
-      startTime: normalizeTime(item?.startTime),
-      endTime: normalizeTime(item?.endTime),
-      location: limitText(item?.location, 40),
-      teacher: limitText(item?.teacher, 30),
-      weeks: limitText(item?.weeks, 40),
-    }))
+    .map((item, index) => {
+      const derived = deriveCourseFields(item)
+
+      return {
+        id: limitText(item?.id, 40) || `course-${index + 1}`,
+        name: limitText(derived.name, 60),
+        weekday: sanitizeWeekday(item?.weekday || item?.day || item?.weekdayLabel),
+        startTime: derived.startTime,
+        endTime: derived.endTime,
+        location: limitText(derived.location, 40),
+        teacher: limitText(derived.teacher, 60),
+        weeks: limitText(derived.weeks, 40),
+      }
+    })
     .filter((item) => item.name && item.startTime && item.endTime)
     .slice(0, 80)
 }
@@ -316,11 +406,13 @@ const requestQwenReply = async (messages, maxTokens, apiKey) =>
 const recognizeScheduleFromImage = async (fileID, apiKey) => {
   const imageUrl = await getTempImageUrl(fileID)
   const prompt = [
-    '请识别这张课程表截图，并只返回 JSON。',
-    'JSON 格式必须是：{"courses":[{"id":"course-1","name":"课程名","weekday":1,"startTime":"09:00","endTime":"10:50","location":"教室","teacher":"老师","weeks":"周次"}]}。',
-    'weekday 使用 1 到 7 表示周一到周日。',
-    '如果某字段无法识别，保留为空字符串；不要编造课程。',
-    '不要返回 markdown、解释或额外文本。',
+    'Read this weekly timetable screenshot and return JSON only.',
+    'This is an XJTLU-style timetable grid with columns MON,TUE,WED,THU,FRI,SAT,SUN and time labels on the left.',
+    'Each colored block is one course.',
+    'Return this exact shape: {"courses":[{"id":"course-1","name":"DTS208TC-Comp.Lab-D1/5","weekday":5,"startTime":"09:00","endTime":"10:50","location":"TC-G-2020","teacher":"Lingxiao Zhao, Yuxuan Zhao","weeks":"Week: 1-13","rawText":"all text inside the block"}]}.',
+    'weekday must be 1-7 for Monday-Sunday.',
+    'If a field is uncertain, keep it as an empty string, but do not omit visible courses.',
+    'Do not return markdown or explanation.',
   ].join('\n')
   const reply = await requestQwenCompletion(
     [
@@ -340,7 +432,7 @@ const recognizeScheduleFromImage = async (fileID, apiKey) => {
         ],
       },
     ],
-    1800,
+    800,
     apiKey,
     {
       model: QWEN_VL_MODEL,

@@ -83,7 +83,7 @@ const sanitizeScheduleCourses = (value: unknown): ScheduleCourse[] => {
 const getWechatCloudApi = () =>
   (globalThis as { wx?: { cloud?: WechatCloudApi } }).wx?.cloud
 
-const callWechatCloudFunction = async <T>(name: string, data?: Record<string, unknown>, timeout = 15000) => {
+const callWechatCloudFunction = async <T>(name: string, data?: Record<string, unknown>, timeout = 20000) => {
   const wxCloud = getWechatCloudApi()
 
   if (!wxCloud?.callFunction) {
@@ -183,7 +183,7 @@ export const recognizeScheduleFromImage = async (fileID: string): Promise<Schedu
       action: 'recognizeSchedule',
       fileID: normalizedFileID,
     },
-    30000,
+    60000,
   )
   const courses = sanitizeScheduleCourses(result.courses)
 
