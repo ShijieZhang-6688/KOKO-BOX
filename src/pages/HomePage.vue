@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import PetLottieAvatar from '../components/PetLottieAvatar.vue'
 import PetMiniGameDrawer from '../components/PetMiniGameDrawer.vue'
 import { useKokoState } from '../composables/useKokoState'
@@ -9,6 +10,7 @@ import type { MiniGameResult, PetActionType } from '../types/koko'
 const FRAME_COUNT = 16
 const STEP_PX = 18
 const PET_LOTTIE_SIZE_RPX = 300
+const TOWN_HOME_ACTION_STORAGE_KEY = 'koko-town-home-action'
 const homeBackgroundCandidates = [
   '/static/home/room-fallback.jpg',
   'static/home/room-fallback.jpg',
@@ -321,6 +323,23 @@ const openChatPage = () => {
   uni.navigateTo({ url: '/pages/chat/index' })
 }
 
+const openPlayFromTown = () => {
+  activeGame.value = 'catch'
+  gameDrawerOpen.value = true
+  triggerPetAction('sparkle', t.value.home.gameReady, 2200)
+}
+
+const handlePendingTownAction = () => {
+  if (typeof uni.getStorageSync !== 'function') return
+  const action = uni.getStorageSync(TOWN_HOME_ACTION_STORAGE_KEY)
+  if (typeof uni.removeStorageSync === 'function') {
+    uni.removeStorageSync(TOWN_HOME_ACTION_STORAGE_KEY)
+  }
+  if (action === 'play') {
+    openPlayFromTown()
+  }
+}
+
 const handleGameComplete = (result: MiniGameResult) => {
   const message =
     result.gameType === 'catch'
@@ -347,6 +366,11 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   void ensureHomeBackground()
+  handlePendingTownAction()
+})
+
+onShow(() => {
+  handlePendingTownAction()
 })
 </script>
 

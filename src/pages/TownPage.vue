@@ -30,6 +30,7 @@ const PET_MIN_X = 10
 const PET_MAX_X = 90
 const PET_MIN_Y = 26
 const PET_MAX_Y = 92
+const TOWN_HOME_ACTION_STORAGE_KEY = 'koko-town-home-action'
 
 const { pet, economy, shopItems, todayTasks, completedTasks, settings, purchaseShopItem, syncEconomyFromCloud } = useKokoState()
 const { t } = useLanguage()
@@ -115,6 +116,15 @@ const shopText = computed(() => ({
   pending: settings.value.language === 'zh' ? '待办' : 'pending',
   done: settings.value.language === 'zh' ? '完成' : 'done',
 }))
+
+const townActionText = computed(() => {
+  const isZh = settings.value.language === 'zh'
+  return {
+    openHome: isZh ? '回到首页' : 'Open Home',
+    openPlay: isZh ? '去玩耍' : 'Open Play',
+    openChat: isZh ? '去聊天' : 'Open Chat',
+  }
+})
 
 const shopItemCopy = (item: (typeof shopItems)[number]) => {
   if (settings.value.language !== 'zh') {
@@ -214,7 +224,21 @@ const goPlanner = () => {
 }
 
 const goHome = () => {
+  closeBuildingPopup()
   uni.switchTab({ url: '/pages/home/index' })
+}
+
+const goHomePlay = () => {
+  closeBuildingPopup()
+  if (typeof uni.setStorageSync === 'function') {
+    uni.setStorageSync(TOWN_HOME_ACTION_STORAGE_KEY, 'play')
+  }
+  uni.switchTab({ url: '/pages/home/index' })
+}
+
+const goChat = () => {
+  closeBuildingPopup()
+  uni.navigateTo({ url: '/pages/chat/index' })
 }
 
 watch(
@@ -307,9 +331,11 @@ onBeforeUnmount(() => {
 
         <view v-else-if="activeBuilding.id === 'talk-house'" class="town-board">
           <view class="town-board__stat">{{ shopText.chatHint }}</view>
-          <button class="town-popup__button" @click="goHome">{{ shopText.openHomeChat }}</button>
+          <button class="town-popup__button" @click="goChat">{{ townActionText.openChat }}</button>
         </view>
 
+        <button v-else-if="activeBuilding.id === 'home'" class="town-popup__button" @click="goHome">{{ townActionText.openHome }}</button>
+        <button v-else-if="activeBuilding.id === 'playground'" class="town-popup__button" @click="goHomePlay">{{ townActionText.openPlay }}</button>
         <button v-else class="town-popup__button" @click="closeBuildingPopup">{{ t.town.ok }}</button>
       </view>
     </view>

@@ -319,14 +319,17 @@ onBeforeUnmount(() => {
 .mini-game-drawer__panel {
   background: linear-gradient(180deg, #fffdf8 0%, #fff8ec 100%);
   border: 2rpx solid rgba(176, 143, 102, 0.16);
-  border-radius: 32rpx 32rpx 0 0;
+  border-radius: 0;
   bottom: 0;
   box-shadow: 0 -20rpx 48rpx rgba(167, 124, 72, 0.18);
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   left: 0;
-  padding: 14rpx 22rpx calc(22rpx + env(safe-area-inset-bottom));
+  padding: calc(18rpx + env(safe-area-inset-top)) 22rpx calc(22rpx + env(safe-area-inset-bottom));
   position: absolute;
   right: 0;
+  top: 0;
 }
 
 .mini-game-drawer__handle {
@@ -427,7 +430,8 @@ onBeforeUnmount(() => {
 
 .mini-game-stage {
   border-radius: 30rpx;
-  height: 430rpx;
+  flex: 1;
+  min-height: 430rpx;
   margin-top: 16rpx;
   overflow: hidden;
   position: relative;
@@ -479,6 +483,7 @@ onBeforeUnmount(() => {
   font-size: 25rpx;
   line-height: 1.55;
   margin-top: 16rpx;
+  min-height: 78rpx;
 }
 
 .mini-game-actions {

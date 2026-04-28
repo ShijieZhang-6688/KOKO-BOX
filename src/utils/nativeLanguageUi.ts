@@ -19,6 +19,7 @@ const pageTitleKeyByRoute: Record<string, keyof (typeof copy)['en']['nav']> = {
   'pages/hardware/index': 'hardware',
   'pages/settings/index': 'settings',
   'pages/feedback/index': 'feedback',
+  'pages/voice-call/index': 'voiceCall',
 }
 
 const currentRoute = () => {

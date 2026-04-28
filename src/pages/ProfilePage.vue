@@ -6,27 +6,15 @@ import { useLanguage } from '../composables/useLanguage'
 
 const { user, pet: authPet, authMode, isGuestSession, loading, importWechatProfile, login } = useAuth()
 const { pet, weeklyCompletionRate, syncPetFromAuth, syncCourseScheduleFromCloud, syncTasksFromCloud, syncEconomyFromCloud } = useKokoState()
-const { language, t } = useLanguage()
+const { t } = useLanguage()
 
 const avatarLoadFailed = ref(false)
-const displayName = computed(() => user.value?.nickName || (isGuestSession.value ? t.value.profile.guest : 'Koko Friend'))
+const displayName = computed(() => user.value?.nickName || (isGuestSession.value ? t.value.profile.guest : t.value.profile.kokoFriend))
 const accountModeLabel = computed(() => (isGuestSession.value ? t.value.profile.guestMode : t.value.profile.wechatAccount))
 const profileInitial = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'K')
 const accountHint = computed(() => (isGuestSession.value ? t.value.profile.guestHint : t.value.profile.accountHint))
 const petStageLabel = computed(() => t.value.profile.stages[pet.value.stage] ?? pet.value.stage)
 const shouldShowAvatarImage = computed(() => Boolean(user.value?.avatarUrl && !avatarLoadFailed.value))
-const feedbackEntryCopy = computed(() =>
-  language.value === 'zh'
-    ? {
-        title: '投诉与建议',
-        hint: '提交后仅本人和管理员可见，发送后不可编辑',
-      }
-    : {
-        title: 'Complaints & Suggestions',
-        hint: 'Only you and administrators can view submitted feedback',
-      },
-)
-
 const openSettings = () => {
   uni.navigateTo({
     url: '/pages/settings/index',
@@ -116,7 +104,7 @@ onMounted(async () => {
           <view class="profile-hero__meta">{{ accountModeLabel }}</view>
         </view>
 
-        <view class="profile-mode-pill">{{ isGuestSession ? 'Guest' : 'WeChat' }}</view>
+        <view class="profile-mode-pill">{{ isGuestSession ? t.profile.guestBadge : t.profile.wechatBadge }}</view>
       </view>
 
       <view class="profile-pet-pill">{{ t.profile.pet }}: {{ pet.name }} · {{ petStageLabel }}</view>
@@ -152,8 +140,8 @@ onMounted(async () => {
     </button>
 
     <button class="profile-settings-entry" :disabled="loading" @click="openFeedback">
-      <view>{{ feedbackEntryCopy.title }}</view>
-      <view class="profile-settings-entry__hint">{{ feedbackEntryCopy.hint }}</view>
+      <view>{{ t.profile.feedbackTitle }}</view>
+      <view class="profile-settings-entry__hint">{{ t.profile.feedbackHint }}</view>
     </button>
   </view>
 </template>

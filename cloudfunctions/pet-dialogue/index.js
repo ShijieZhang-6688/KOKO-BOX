@@ -635,11 +635,13 @@ const recognizeScheduleFromImage = async (fileID, apiKey) => {
   const imageUrl = await getTempImageUrl(fileID)
   const prompt = [
     'Read this weekly timetable screenshot and return JSON only.',
-    'This is an XJTLU-style timetable grid with columns MON,TUE,WED,THU,FRI,SAT,SUN and time labels on the left.',
-    'Each colored block is one course.',
+    'This is an XJTLU-style weekly timetable: a gray header row, columns MON,TUE,WED,THU,FRI,SAT,SUN, and a left time axis labeled every 30 minutes such as 09:00,09:30,10:00.',
+    'Each colored block is one course. Read the course name, teachers, location, week range, start time, and end time from the colored course block and its vertical position on the time grid.',
+    'The visible time printed inside a course block, such as 09:00 - 10:50, is the authoritative startTime and endTime when present.',
     'Return compact minified JSON in this exact shape: {"courses":[{"id":"course-1","name":"DTS208TC-Comp.Lab-D1/5","weekday":5,"startTime":"09:00","endTime":"10:50","location":"TC-G-2020","teacher":"Lingxiao Zhao, Yuxuan Zhao","weeks":"Week: 1-13"}]}.',
-    'weekday must be 1-7 for Monday-Sunday.',
-    'If a field is uncertain, keep it as an empty string, but do not omit visible courses.',
+    'weekday must be 1-7 where Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6, Sunday=7.',
+    'If text fields are uncertain, keep them as an empty string, but do not omit visible course blocks.',
+    'Use HH:mm 24-hour format for startTime and endTime.',
     'Do not include rawText or any extra fields.',
     'Do not return markdown or explanation.',
     'Do not include any text before or after the JSON.',

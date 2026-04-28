@@ -3100,6 +3100,11 @@ button {
   padding: 0 0 8px;
 }
 
+.planner-schedule-track {
+  display: grid;
+  position: relative;
+}
+
 .planner-schedule-empty-page {
   align-content: center;
   background: rgba(255, 255, 255, 0.78);
@@ -3128,9 +3133,8 @@ button {
 }
 
 .planner-schedule-grid {
-  display: grid;
-  grid-template-columns: 64px repeat(7, minmax(86px, 1fr));
-  overflow-x: auto;
+  overflow: auto;
+  width: 100%;
 }
 
 .planner-schedule-head,
@@ -3138,36 +3142,53 @@ button {
 .planner-schedule-cell {
   border-bottom: 1px solid rgba(196, 156, 82, 0.14);
   border-right: 1px solid rgba(196, 156, 82, 0.14);
-  min-height: 54px;
+  box-sizing: border-box;
   padding: 8px 6px;
 }
 
 .planner-schedule-head {
+  align-items: center;
   background: #fff6e6;
   color: #805d2c;
+  display: flex;
   font-size: 0.74rem;
   font-weight: 900;
+  justify-content: center;
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 6;
   text-align: center;
+}
+
+.planner-schedule-time-head {
+  left: 0;
+  z-index: 7;
 }
 
 .planner-schedule-time {
   align-items: center;
-  color: #9a6d2b;
+  background: #fffaf0;
+  color: #8e6327;
   display: flex;
   font-size: 0.68rem;
   font-weight: 900;
   justify-content: center;
   line-height: 1.25;
-  white-space: pre-line;
+  left: 0;
+  position: sticky;
+  text-align: center;
+  white-space: nowrap;
+  z-index: 4;
 }
 
 .planner-schedule-cell {
   background: rgba(255, 252, 246, 0.78);
-  display: grid;
-  gap: 6px;
+  min-height: 54px;
+}
+
+.planner-schedule-cell--target {
+  background: rgba(141, 103, 50, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(141, 103, 50, 0.36);
 }
 
 .planner-schedule-course {
@@ -3175,15 +3196,27 @@ button {
   border-left: 3px solid #d9cff3;
   border-radius: 8px;
   box-shadow: 0 6px 12px rgba(108, 94, 122, 0.07);
+  box-sizing: border-box;
   color: #3d3442;
   display: grid;
   gap: 2px;
-  min-height: 46px;
-  padding: 7px;
+  margin: 6px;
+  min-height: 42px;
+  overflow: hidden;
+  padding: 8px;
+  position: relative;
+  touch-action: none;
+  transition: box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.planner-schedule-course--dragging {
+  box-shadow: 0 14px 28px rgba(105, 76, 35, 0.2);
+  opacity: 0.88;
+  transform: scale(1.02);
 }
 
 .planner-schedule-course__name {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 900;
   line-height: 1.28;
   overflow-wrap: anywhere;
@@ -3191,7 +3224,7 @@ button {
 
 .planner-schedule-course__meta {
   color: #8a785f;
-  font-size: 0.64rem;
+  font-size: 0.6rem;
   font-weight: 700;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -4384,7 +4417,12 @@ body,
 }
 
 button {
+  align-items: center;
+  display: flex;
   font: inherit;
+  justify-content: center;
+  line-height: 1.2;
+  text-align: center;
 }
 
 button::after {
