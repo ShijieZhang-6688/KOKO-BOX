@@ -3084,6 +3084,7 @@ button {
 .planner-schedule-page-body {
   height: calc(100vh - 142px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow: hidden;
+  position: relative;
 }
 
 .planner-schedule-card--page {
@@ -3156,13 +3157,13 @@ button {
   justify-content: center;
   position: sticky;
   top: 0;
-  z-index: 6;
+  z-index: 30;
   text-align: center;
 }
 
 .planner-schedule-time-head {
   left: 0;
-  z-index: 7;
+  z-index: 40;
 }
 
 .planner-schedule-time {
@@ -3178,7 +3179,7 @@ button {
   position: sticky;
   text-align: center;
   white-space: nowrap;
-  z-index: 4;
+  z-index: 25;
 }
 
 .planner-schedule-cell {
@@ -3211,8 +3212,24 @@ button {
 
 .planner-schedule-course--dragging {
   box-shadow: 0 14px 28px rgba(105, 76, 35, 0.2);
-  opacity: 0.88;
+  opacity: 0.34;
   transform: scale(1.02);
+}
+
+.planner-schedule-course-drag-ghost {
+  background: #ffffff;
+  border-left: 3px solid #d9cff3;
+  border-radius: 8px;
+  box-shadow: 0 16px 32px rgba(105, 76, 35, 0.24);
+  box-sizing: border-box;
+  color: #3d3442;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  pointer-events: none;
+  position: fixed;
+  transform: translate(10px, 10px);
+  z-index: 999;
 }
 
 .planner-schedule-course__name {

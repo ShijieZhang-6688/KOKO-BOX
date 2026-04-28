@@ -29,6 +29,11 @@ type DragTarget = {
   minutes: number
 }
 
+type DragOrigin = {
+  weekday: ScheduleWeekday
+  minutes: number
+}
+
 const DEFAULT_START_MINUTES = 9 * 60
 const DEFAULT_END_MINUTES = 19 * 60
 const SLOT_MINUTES = 30
@@ -36,7 +41,6 @@ const TIME_COLUMN_WIDTH = 76
 const DAY_COLUMN_WIDTH = 96
 const ROW_HEIGHT = 54
 const HEADER_HEIGHT = 54
-const LONG_PRESS_MS = 450
 
 const { courseSchedule, setCourseSchedule } = useKokoState()
 const { t } = useLanguage()
@@ -52,11 +56,15 @@ const {
 const dragCourseId = ref('')
 const activeDragCourseId = ref('')
 const dragTarget = ref<DragTarget | null>(null)
+const dragGhostX = ref(0)
+const dragGhostY = ref(0)
 const scrollLeft = ref(0)
 const scrollTop = ref(0)
-let longPressTimer: ReturnType<typeof setTimeout> | undefined
+let dragOrigin: DragOrigin | null = null
 let dragStartX = 0
 let dragStartY = 0
+let latestDragX = 0
+let latestDragY = 0
 
 const weekdayColumns = computed<Array<{ key: ScheduleWeekday; label: string }>>(() =>
   t.value.schedule.weekdays.map((label, index) => ({
@@ -90,6 +98,7 @@ const formatMinutes = (value: number) => {
 
 const floorToSlot = (value: number) => Math.floor(value / SLOT_MINUTES) * SLOT_MINUTES
 const ceilToSlot = (value: number) => Math.ceil(value / SLOT_MINUTES) * SLOT_MINUTES
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
 const scheduleBounds = computed(() => {
   const startCandidates = importedCourses.value
@@ -132,6 +141,14 @@ const scheduleCells = computed<ScheduleCell[]>(() =>
 )
 
 const targetCellKey = computed(() => (dragTarget.value ? `${dragTarget.value.weekday}-${dragTarget.value.slotKey}` : ''))
+const activeDragCourse = computed(() => importedCourses.value.find((course) => course.id === activeDragCourseId.value))
+const dragGhostStyle = computed(() =>
+  [
+    `left: ${dragGhostX.value}px`,
+    `top: ${dragGhostY.value}px`,
+    `width: ${DAY_COLUMN_WIDTH - 12}px`,
+  ].join('; '),
+)
 
 const scheduleTrackStyle = computed(() => {
   const bodyRows = Math.max(1, scheduleSlots.value.length - 1)
@@ -150,7 +167,7 @@ const getCourseDuration = (course: ScheduleCourse) => {
 }
 
 const courseLayouts = computed<CourseLayout[]>(() =>
-  importedCourses.value.map((course, index) => {
+  importedCourses.value.map((course) => {
     const parsedStart = parseTimeToMinutes(course.startTime) ?? scheduleBounds.value.start
     const parsedEnd = parseTimeToMinutes(course.endTime) ?? parsedStart + SLOT_MINUTES
     const start = Math.max(scheduleBounds.value.start, floorToSlot(parsedStart))
@@ -164,7 +181,7 @@ const courseLayouts = computed<CourseLayout[]>(() =>
       style: [
         `grid-column: ${column}`,
         `grid-row: ${startRow} / ${endRow}`,
-        `z-index: ${activeDragCourseId.value === course.id ? 5 : 3 + (index % 2)}`,
+        `z-index: ${activeDragCourseId.value === course.id ? 12 : 3}`,
       ].join('; '),
     }
   }),
@@ -178,73 +195,84 @@ const touchPoint = (event: any) => {
   }
 }
 
-const clearLongPressTimer = () => {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer)
-    longPressTimer = undefined
+const getDragTargetFromDelta = (pageX: number, pageY: number): DragTarget | null => {
+  if (!dragOrigin) return null
+
+  const dayDelta = Math.round((pageX - dragStartX) / DAY_COLUMN_WIDTH)
+  const slotDelta = Math.round((pageY - dragStartY) / ROW_HEIGHT)
+  const weekday = clamp(dragOrigin.weekday + dayDelta, 1, 7) as ScheduleWeekday
+  const minutes = clamp(
+    dragOrigin.minutes + slotDelta * SLOT_MINUTES,
+    scheduleBounds.value.start,
+    Math.max(scheduleBounds.value.start, scheduleBounds.value.end - SLOT_MINUTES),
+  )
+  const snappedMinutes = floorToSlot(minutes)
+  const slot = scheduleSlots.value.find((item) => item.minutes === snappedMinutes) ?? scheduleSlots.value[0]
+  if (!slot) return null
+
+  return {
+    weekday,
+    slotKey: slot.key,
+    minutes: slot.minutes,
   }
 }
 
 const updateDragTarget = (pageX: number, pageY: number) => {
-  const query = uni.createSelectorQuery()
-  query
-    .select('.planner-schedule-grid--page')
-    .boundingClientRect((rect) => {
-      if (!rect || Array.isArray(rect)) return
-      const localX = pageX - rect.left + scrollLeft.value
-      const localY = pageY - rect.top + scrollTop.value
-      const dayIndex = Math.floor((localX - TIME_COLUMN_WIDTH) / DAY_COLUMN_WIDTH)
-      const slotIndex = Math.floor((localY - HEADER_HEIGHT) / ROW_HEIGHT)
-      const maxSlotIndex = Math.max(0, scheduleSlots.value.length - 2)
-
-      if (dayIndex < 0 || dayIndex > 6 || slotIndex < 0 || slotIndex > maxSlotIndex) {
-        dragTarget.value = null
-        return
-      }
-
-      const slot = scheduleSlots.value[Math.min(slotIndex, maxSlotIndex)]
-      dragTarget.value = {
-        weekday: (dayIndex + 1) as ScheduleWeekday,
-        slotKey: slot.key,
-        minutes: slot.minutes,
-      }
-    })
-    .exec()
+  dragTarget.value = getDragTargetFromDelta(pageX, pageY)
 }
 
 const beginCourseDrag = (course: ScheduleCourse, event: any) => {
-  clearLongPressTimer()
   const point = touchPoint(event)
+  const startMinutes = parseTimeToMinutes(course.startTime) ?? scheduleBounds.value.start
+  dragOrigin = {
+    weekday: course.weekday,
+    minutes: floorToSlot(startMinutes),
+  }
   dragStartX = point.x
   dragStartY = point.y
+  latestDragX = point.x
+  latestDragY = point.y
   dragCourseId.value = course.id
-  dragTarget.value = null
-  longPressTimer = setTimeout(() => {
-    activeDragCourseId.value = course.id
-    updateDragTarget(dragStartX, dragStartY)
-  }, LONG_PRESS_MS)
+  activeDragCourseId.value = course.id
+  dragGhostX.value = point.x
+  dragGhostY.value = point.y
+  updateDragTarget(point.x, point.y)
+}
+
+const activateCourseDrag = (course: ScheduleCourse, event: any) => {
+  const rawPoint = touchPoint(event)
+  const point = rawPoint.x || rawPoint.y ? rawPoint : { x: dragStartX, y: dragStartY }
+  const startMinutes = parseTimeToMinutes(course.startTime) ?? scheduleBounds.value.start
+  dragOrigin = {
+    weekday: course.weekday,
+    minutes: floorToSlot(startMinutes),
+  }
+  latestDragX = point.x
+  latestDragY = point.y
+  dragCourseId.value = course.id
+  activeDragCourseId.value = course.id
+  dragGhostX.value = point.x
+  dragGhostY.value = point.y
+  updateDragTarget(point.x, point.y)
+  uni.vibrateShort?.({ type: 'light' })
 }
 
 const moveCourseDrag = (event: any) => {
   const point = touchPoint(event)
-  if (!activeDragCourseId.value) {
-    if (Math.abs(point.x - dragStartX) > 8 || Math.abs(point.y - dragStartY) > 8) {
-      clearLongPressTimer()
-      dragCourseId.value = ''
-    }
-    return
-  }
+  if (!activeDragCourseId.value) return
 
+  latestDragX = point.x
+  latestDragY = point.y
+  dragGhostX.value = point.x
+  dragGhostY.value = point.y
   updateDragTarget(point.x, point.y)
 }
 
-const finishCourseDrag = async () => {
-  clearLongPressTimer()
-  const courseId = activeDragCourseId.value || dragCourseId.value
-  const target = dragTarget.value
+const commitCourseDrag = async (courseId: string, target: DragTarget | null) => {
   activeDragCourseId.value = ''
   dragCourseId.value = ''
   dragTarget.value = null
+  dragOrigin = null
 
   if (!courseId || !target || !courseSchedule.value) return
 
@@ -275,6 +303,18 @@ const finishCourseDrag = async () => {
   })
 }
 
+const finishCourseDrag = () => {
+  const courseId = activeDragCourseId.value || dragCourseId.value
+  const target = dragTarget.value
+
+  if (target) {
+    void commitCourseDrag(courseId, target)
+    return
+  }
+
+  void commitCourseDrag(courseId, getDragTargetFromDelta(latestDragX, latestDragY))
+}
+
 const handleScheduleScroll = (event: any) => {
   scrollLeft.value = Number(event?.detail?.scrollLeft ?? 0)
   scrollTop.value = Number(event?.detail?.scrollTop ?? 0)
@@ -302,8 +342,8 @@ const backToPlanner = () => {
     <view v-if="hasCourseSchedule" class="planner-schedule-page-body">
       <scroll-view
         class="planner-schedule-grid planner-schedule-grid--page"
-        scroll-x
-        scroll-y
+        :scroll-x="!activeDragCourseId"
+        :scroll-y="!activeDragCourseId"
         enhanced
         :show-scrollbar="false"
         @scroll="handleScheduleScroll"
@@ -346,6 +386,8 @@ const backToPlanner = () => {
             @touchmove.stop.prevent="moveCourseDrag"
             @touchend.stop="finishCourseDrag"
             @touchcancel.stop="finishCourseDrag"
+            @longpress.stop.prevent="activateCourseDrag(layout.course, $event)"
+            @longtap.stop.prevent="activateCourseDrag(layout.course, $event)"
           >
             <view class="planner-schedule-course__name">{{ layout.course.name }}</view>
             <view v-if="layout.course.teacher" class="planner-schedule-course__meta">{{ layout.course.teacher }}</view>
@@ -355,6 +397,12 @@ const backToPlanner = () => {
           </view>
         </view>
       </scroll-view>
+
+      <view v-if="activeDragCourse" class="planner-schedule-course-drag-ghost" :style="dragGhostStyle">
+        <view class="planner-schedule-course__name">{{ activeDragCourse.name }}</view>
+        <view v-if="activeDragCourse.location" class="planner-schedule-course__meta">{{ activeDragCourse.location }}</view>
+        <view class="planner-schedule-course__meta">{{ activeDragCourse.startTime }} - {{ activeDragCourse.endTime }}</view>
+      </view>
     </view>
 
     <view v-else class="planner-schedule-empty-page">
