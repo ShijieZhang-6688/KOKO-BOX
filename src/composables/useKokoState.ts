@@ -4,9 +4,11 @@ import type {
   CareActionKey,
   CareActionResult,
   ChatMessage,
+  CompanionEconomy,
   CourseSchedule,
   DailySnapshot,
   DeviceStatus,
+  EconomyRewardSource,
   EmotionTag,
   FacingDirection,
   MiniGameResult,
@@ -15,6 +17,8 @@ import type {
   PetQuickReply,
   PetStage,
   RewardType,
+  ShopItem,
+  ShopItemId,
   SyncEvent,
   SyncStatus,
   Task,
@@ -41,6 +45,11 @@ import {
   loadTasksFromCloud,
   saveTasksToCloud,
 } from '../services/taskCloud'
+import {
+  loadCompanionFromCloud,
+  normalizeCompanionEconomy,
+  saveCompanionToCloud,
+} from '../services/companionCloud'
 import { useAuth } from './useAuth'
 import { copy } from '../i18n'
 
@@ -254,8 +263,52 @@ const defaultMetrics = (): AppMetrics => ({
   interactions: 12,
   completedTasks: 4,
   companionMinutes: 48,
-  coins: 26,
+  coins: 0,
 })
+
+const defaultEconomy = (coins = 0): CompanionEconomy => ({
+  coins,
+  inventory: {},
+  purchaseHistory: [],
+  rewardLedger: {},
+  dailyChatRewards: {},
+  updatedAt: nowIso(),
+})
+
+const shopItems: ShopItem[] = [
+  {
+    id: 'snack-pack',
+    name: 'Snack Pack',
+    description: 'A cozy snack that lifts mood and hunger.',
+    price: 8,
+    moodDelta: 6,
+    hungerDelta: 6,
+  },
+  {
+    id: 'toy-ball',
+    name: 'Toy Ball',
+    description: 'A playful ball for better mood and bonding.',
+    price: 18,
+    moodDelta: 10,
+    intimacyDelta: 4,
+  },
+  {
+    id: 'clean-kit',
+    name: 'Clean Kit',
+    description: 'Fresh care for cleanliness, health, and mood.',
+    price: 20,
+    cleanDelta: 10,
+    healthDelta: 4,
+    moodDelta: 3,
+  },
+  {
+    id: 'home-decor',
+    name: 'Home Decor',
+    description: 'A soft decoration that makes home feel brighter.',
+    price: 30,
+    moodDelta: 8,
+  },
+]
 
 interface PersistedState {
   pet: Pet
@@ -269,6 +322,7 @@ interface PersistedState {
   archive: PetArchive
   snapshots: DailySnapshot[]
   metrics: AppMetrics
+  economy?: CompanionEconomy
   petPersonaPrompt?: string
   petPersonaPromptVersion?: number
 }
@@ -284,6 +338,7 @@ const settings = ref<UserSettings>(defaultSettings())
 const archive = ref<PetArchive>(defaultArchive())
 const snapshots = ref<DailySnapshot[]>(defaultSnapshots())
 const metrics = ref<AppMetrics>(defaultMetrics())
+const economy = ref<CompanionEconomy>(defaultEconomy())
 const petPersonaPrompt = ref(defaultPetPersonaPrompt)
 const hydrated = ref(false)
 const cloudHistoryHydrated = ref(false)
@@ -292,6 +347,8 @@ const cloudTasksHydrated = ref(false)
 const cloudTasksHydrating = ref(false)
 const cloudCourseScheduleHydrated = ref(false)
 const cloudCourseScheduleHydrating = ref(false)
+const cloudEconomyHydrated = ref(false)
+const cloudEconomyHydrating = ref(false)
 
 const deriveStage = (value: number): PetStage => {
   if (value >= 85) return 'adult'
@@ -352,9 +409,31 @@ const latestTaskTimestamp = (items: Task[]) =>
     return Math.max(latest, itemLatest)
   }, 0)
 
+const defaultTaskIds = new Set(defaultTasks().map((item) => item.id))
+const hasUserTaskData = (items: Task[]) => items.some((item) => !defaultTaskIds.has(item.id))
+
+const syncMetricsCoins = () => {
+  metrics.value = {
+    ...metrics.value,
+    coins: economy.value.coins,
+  }
+}
+
+const setEconomy = (nextEconomy: Partial<CompanionEconomy> | CompanionEconomy) => {
+  economy.value = normalizeCompanionEconomy(
+    {
+      ...economy.value,
+      ...nextEconomy,
+    },
+    metrics.value.coins,
+  )
+  syncMetricsCoins()
+}
+
 const persistState = () => {
   if (!hasUniStorage()) return
 
+  syncMetricsCoins()
   const payload: PersistedState = {
     pet: sanitizePet(pet.value),
     tasks: tasks.value,
@@ -367,6 +446,7 @@ const persistState = () => {
     archive: archive.value,
     snapshots: snapshots.value,
     metrics: metrics.value,
+    economy: economy.value,
     petPersonaPrompt: petPersonaPrompt.value,
     petPersonaPromptVersion: PET_PERSONA_PROMPT_VERSION,
   }
@@ -378,8 +458,7 @@ const persistState = () => {
 const applySnapshot = (snapshot?: Partial<PersistedState>) => {
   pet.value = sanitizePet(snapshot?.pet)
   tasks.value = snapshot?.tasks ?? defaultTasks()
-  taskCollectionUpdatedAt.value =
-    snapshot?.taskCollectionUpdatedAt ?? new Date(latestTaskTimestamp(tasks.value) || Date.now()).toISOString()
+  taskCollectionUpdatedAt.value = snapshot?.taskCollectionUpdatedAt ?? ''
   courseSchedule.value = snapshot?.courseSchedule ?? null
   messages.value = snapshot?.messages ?? defaultMessages()
   devices.value = snapshot?.devices ?? defaultDevices()
@@ -391,6 +470,8 @@ const applySnapshot = (snapshot?: Partial<PersistedState>) => {
   archive.value = snapshot?.archive ?? defaultArchive()
   snapshots.value = snapshot?.snapshots ?? defaultSnapshots()
   metrics.value = snapshot?.metrics ?? defaultMetrics()
+  economy.value = normalizeCompanionEconomy(snapshot?.economy ?? defaultEconomy(), 0)
+  syncMetricsCoins()
   petPersonaPrompt.value =
     snapshot?.petPersonaPromptVersion === PET_PERSONA_PROMPT_VERSION && snapshot?.petPersonaPrompt?.trim()
       ? snapshot.petPersonaPrompt.trim()
@@ -449,10 +530,20 @@ const persistTasksToCloud = async (snapshotTasks: Task[], snapshotUpdatedAt: str
     if (savedTasks && taskCollectionUpdatedAt.value === snapshotUpdatedAt) {
       tasks.value = savedTasks.tasks
       taskCollectionUpdatedAt.value = savedTasks.updatedAt || snapshotUpdatedAt
+      logSyncEvent(settings.value.language === 'zh' ? '任务和 DDL 已同步到云端。' : 'Tasks and DDL synced to cloud.', {
+        target: 'miniapp',
+        actionType: 'task-cloud-save',
+      })
       persistState()
     }
-  } catch {
-    // Keep local task changes when cloud sync fails.
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : 'unknown error'
+    logSyncEvent(settings.value.language === 'zh' ? `任务云同步失败：${message}` : `Task cloud sync failed: ${message}`, {
+      target: 'miniapp',
+      actionType: 'task-cloud-save',
+      status: 'offline',
+    })
+    persistState()
   }
 }
 
@@ -498,22 +589,166 @@ const updatePet = (changes: Partial<Pet>) => {
   persistState()
 }
 
-const rewardTask = (rewardType: RewardType) => {
-  const rewardMap: Record<RewardType, Partial<Pet>> = {
-    snack: { hunger: pet.value.hunger + 10, mood: pet.value.mood + 4 },
-    coin: { mood: pet.value.mood + 3 },
-    toy: { mood: pet.value.mood + 8, intimacy: pet.value.intimacy + 4, energy: pet.value.energy - 2 },
-    mood: { mood: pet.value.mood + 10 },
-    bond: { intimacy: pet.value.intimacy + 8, mood: pet.value.mood + 4 },
+const applyPetImpactDelta = (impact?: {
+  mood?: number
+  hunger?: number
+  intimacy?: number
+  clean?: number
+  health?: number
+  energy?: number
+}) => {
+  if (!impact) return
+
+  updatePet({
+    mood: pet.value.mood + (impact.mood ?? 0),
+    hunger: pet.value.hunger + (impact.hunger ?? 0),
+    intimacy: pet.value.intimacy + (impact.intimacy ?? 0),
+    clean: pet.value.clean + (impact.clean ?? 0),
+    health: pet.value.health + (impact.health ?? 0),
+    energy: pet.value.energy + (impact.energy ?? 0),
+  })
+}
+
+const persistEconomyToCloud = async () => {
+  if (authMode.value !== 'wechat' || isMockSession.value) {
+    return
   }
 
+  try {
+    const updatedAt = economy.value.updatedAt || nowIso()
+    const saved = await saveCompanionToCloud({
+      pet: sanitizePet(pet.value),
+      economy: economy.value,
+      updatedAt,
+    })
+
+    if (saved && saved.updatedAt >= updatedAt) {
+      pet.value = sanitizePet({
+        ...pet.value,
+        ...(saved.pet ?? {}),
+      })
+      setEconomy(saved.economy)
+      persistState()
+    }
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : 'unknown error'
+    logSyncEvent(settings.value.language === 'zh' ? `陪伴经济云同步失败：${message}` : `Companion economy sync failed: ${message}`, {
+      target: 'miniapp',
+      actionType: 'companion-cloud-save',
+      status: 'offline',
+    })
+    persistState()
+  }
+}
+
+const persistEconomy = () => {
+  setEconomy({
+    ...economy.value,
+    updatedAt: nowIso(),
+  })
+  persistState()
+  void persistEconomyToCloud()
+}
+
+const hydrateEconomyFromCloud = async () => {
+  if (cloudEconomyHydrated.value || cloudEconomyHydrating.value) {
+    return
+  }
+
+  hydrateState()
+
+  if (authMode.value !== 'wechat' || isMockSession.value) {
+    return
+  }
+
+  cloudEconomyHydrating.value = true
+
+  try {
+    const cloudSnapshot = await loadCompanionFromCloud(economy.value.coins)
+    const cloudUpdatedAt = new Date(cloudSnapshot?.updatedAt || 0).getTime() || 0
+    const localUpdatedAt = new Date(economy.value.updatedAt || 0).getTime() || 0
+
+    if (cloudSnapshot && cloudUpdatedAt >= localUpdatedAt) {
+      if (cloudSnapshot.pet) {
+        pet.value = sanitizePet({
+          ...pet.value,
+          ...cloudSnapshot.pet,
+        })
+      }
+      setEconomy(cloudSnapshot.economy)
+      logSyncEvent(settings.value.language === 'zh' ? '已从云端加载金币、库存和宠物状态。' : 'Coins, inventory, and pet state loaded from cloud.', {
+        target: 'miniapp',
+        actionType: 'companion-cloud-load',
+      })
+      persistState()
+    } else {
+      await persistEconomyToCloud()
+    }
+
+    cloudEconomyHydrated.value = true
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : 'unknown error'
+    logSyncEvent(settings.value.language === 'zh' ? `陪伴经济云加载失败：${message}` : `Companion economy load failed: ${message}`, {
+      target: 'miniapp',
+      actionType: 'companion-cloud-load',
+      status: 'offline',
+    })
+    persistState()
+  } finally {
+    cloudEconomyHydrating.value = false
+  }
+}
+
+const awardCoins = (
+  source: EconomyRewardSource,
+  amount: number,
+  ledgerKey: string,
+  petImpact?: Parameters<typeof applyPetImpactDelta>[0],
+) => {
+  hydrateState()
+  const safeAmount = Math.max(0, Math.round(amount))
+
+  if (!safeAmount || economy.value.rewardLedger[ledgerKey]) {
+    return {
+      awarded: false,
+      amount: 0,
+      coins: economy.value.coins,
+    }
+  }
+
+  setEconomy({
+    ...economy.value,
+    coins: economy.value.coins + safeAmount,
+    rewardLedger: {
+      ...economy.value.rewardLedger,
+      [ledgerKey]: {
+        key: ledgerKey,
+        source,
+        amount: safeAmount,
+        createdAt: nowIso(),
+      },
+    },
+  })
+
+  if (petImpact) {
+    applyPetImpactDelta(petImpact)
+  }
+
+  persistEconomy()
+
+  return {
+    awarded: true,
+    amount: safeAmount,
+    coins: economy.value.coins,
+  }
+}
+
+const rewardTask = (rewardType: RewardType) => {
   metrics.value = {
     ...metrics.value,
-    coins: metrics.value.coins + (rewardType === 'coin' ? 8 : 4),
     completedTasks: metrics.value.completedTasks + 1,
     companionMinutes: metrics.value.companionMinutes + 12,
   }
-  updatePet(rewardMap[rewardType])
 }
 
 const setActiveMiniGame = (gameType: Pet['activeMiniGame']) => {
@@ -728,6 +963,76 @@ const clearCourseSchedule = () => {
   persistState()
 }
 
+const purchaseShopItem = (itemId: ShopItemId) => {
+  hydrateState()
+  const item = shopItems.find((candidate) => candidate.id === itemId)
+  const isZh = settings.value.language === 'zh'
+  const itemName = item
+    ? isZh
+      ? ({
+          'snack-pack': '零食包',
+          'toy-ball': '玩具球',
+          'clean-kit': '清洁套装',
+          'home-decor': '小屋装饰',
+        } satisfies Record<ShopItemId, string>)[item.id]
+      : item.name
+    : ''
+
+  if (!item) {
+    return {
+      success: false,
+      message: isZh ? '商品不存在。' : 'This item is unavailable.',
+      coins: economy.value.coins,
+    }
+  }
+
+  if (economy.value.coins < item.price) {
+    return {
+      success: false,
+      message: isZh ? '金币不足，先完成任务或和 Koko 聊聊天吧。' : 'Not enough coins. Complete tasks or chat with Koko first.',
+      coins: economy.value.coins,
+    }
+  }
+
+  setEconomy({
+    ...economy.value,
+    coins: economy.value.coins - item.price,
+    inventory: {
+      ...economy.value.inventory,
+      [item.id]: (economy.value.inventory[item.id] ?? 0) + 1,
+    },
+    purchaseHistory: [
+      ...economy.value.purchaseHistory,
+      {
+        id: createId('purchase'),
+        itemId: item.id,
+        price: item.price,
+        createdAt: nowIso(),
+      },
+    ].slice(-100),
+  })
+
+  applyPetImpactDelta({
+    mood: item.moodDelta,
+    hunger: item.hungerDelta,
+    intimacy: item.intimacyDelta,
+    clean: item.cleanDelta,
+    health: item.healthDelta,
+  })
+  logSyncEvent(isZh ? `已在小镇商店兑换 ${itemName}。` : `${itemName} redeemed in the town shop.`, {
+    target: 'miniapp',
+    actionType: 'shop-purchase',
+  })
+  persistEconomy()
+
+  return {
+    success: true,
+    item,
+    message: isZh ? `${itemName} 已兑换，Koko 很开心。` : `${itemName} redeemed. Koko feels happier.`,
+    coins: economy.value.coins,
+  }
+}
+
 const applyMiniGameReward = (result: MiniGameResult) => {
   hydrateState()
 
@@ -739,8 +1044,12 @@ const applyMiniGameReward = (result: MiniGameResult) => {
     ...metrics.value,
     interactions: metrics.value.interactions + 1,
     companionMinutes: metrics.value.companionMinutes + 6,
-    coins: metrics.value.coins + Math.min(12, Math.max(3, Math.floor(result.score / 3))),
   }
+  awardCoins(
+    'mini-game',
+    Math.min(12, Math.max(3, Math.floor(result.score / 3))),
+    `mini-game:${result.gameType}:${Date.now()}:${Math.round(result.score)}`,
+  )
 
   updatePet({
     mood: pet.value.mood + baseMood + scoreScale + (result.bonusMood ?? 0),
@@ -749,6 +1058,7 @@ const applyMiniGameReward = (result: MiniGameResult) => {
     clean: pet.value.clean + (result.bonusClean ?? 0),
     activeMiniGame: result.gameType,
   })
+  void persistEconomyToCloud()
 
   logSyncEvent(settings.value.language === 'zh' ? '小游戏 ' + result.gameType + ' 完成，得到 ' + result.score + ' 分。' : 'Mini game ' + result.gameType + ' completed with score ' + result.score + '.', {
     target: 'desktop',
@@ -756,6 +1066,11 @@ const applyMiniGameReward = (result: MiniGameResult) => {
     status: 'success',
   })
   persistState()
+}
+
+const calculateTaskCoinReward = (task: Task) => {
+  const base = task.kind === 'ddl' ? 10 : 6
+  return base + (task.priority === 'high' ? 2 : 0)
 }
 
 const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
@@ -777,6 +1092,15 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
 
   if (nextStatus === 'completed') {
     rewardTask(targetTask.rewardType)
+    const rewardResult = awardCoins(
+      'task',
+      calculateTaskCoinReward(targetTask),
+      `task:${targetTask.id}:${targetTask.createdAt}`,
+      {
+        mood: 6,
+        intimacy: 2,
+      },
+    )
     logSyncEvent(settings.value.language === 'zh' ? '任务「' + targetTask.title + '」已完成，奖励已发放。' : 'Task "' + targetTask.title + '" completed. Reward delivered.', {
       target: 'm5',
       actionType: 'task-complete',
@@ -796,6 +1120,8 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
         ...archive.value.milestones,
       ].slice(0, 5),
     }
+    persistTaskCollection()
+    return rewardResult
   }
 
   if (nextStatus === 'delayed') {
@@ -817,6 +1143,12 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
   }
 
   persistTaskCollection()
+
+  return {
+    awarded: false,
+    amount: 0,
+    coins: economy.value.coins,
+  }
 }
 
 const emotionReplyMap: Record<UserSettings['language'], Record<EmotionTag, string[]>> = {
@@ -911,22 +1243,32 @@ const hydrateCloudTasks = async () => {
 
   try {
     const cloudTasks = await loadTasksFromCloud()
-    const cloudUpdatedAt = new Date(cloudTasks?.updatedAt || 0).getTime()
-    const localUpdatedAt = new Date(taskCollectionUpdatedAt.value || 0).getTime()
+    const cloudUpdatedAt = new Date(cloudTasks?.updatedAt || 0).getTime() || 0
+    const localUpdatedAt = new Date(taskCollectionUpdatedAt.value || 0).getTime() || 0
 
-    if (cloudTasks && cloudUpdatedAt > localUpdatedAt) {
+    if (cloudTasks?.updatedAt && cloudUpdatedAt >= localUpdatedAt) {
       tasks.value = cloudTasks.tasks
       taskCollectionUpdatedAt.value = cloudTasks.updatedAt || nowIso()
+      logSyncEvent(settings.value.language === 'zh' ? '已从云端加载任务和 DDL。' : 'Tasks and DDL loaded from cloud.', {
+        target: 'miniapp',
+        actionType: 'task-cloud-load',
+      })
       persistState()
-    } else if (tasks.value.length) {
+    } else if (tasks.value.length && (localUpdatedAt > 0 || hasUserTaskData(tasks.value))) {
       const nextUpdatedAt = taskCollectionUpdatedAt.value || new Date(latestTaskTimestamp(tasks.value) || Date.now()).toISOString()
       taskCollectionUpdatedAt.value = nextUpdatedAt
       await persistTasksToCloud(tasks.value, nextUpdatedAt)
     }
 
     cloudTasksHydrated.value = true
-  } catch {
-    // Ignore task hydration failures and keep local cache.
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : 'unknown error'
+    logSyncEvent(settings.value.language === 'zh' ? `任务云加载失败：${message}` : `Task cloud load failed: ${message}`, {
+      target: 'miniapp',
+      actionType: 'task-cloud-load',
+      status: 'offline',
+    })
+    persistState()
   } finally {
     cloudTasksHydrating.value = false
   }
@@ -981,6 +1323,11 @@ const syncCourseScheduleFromCloud = async () => {
 const syncTasksFromCloud = async () => {
   cloudTasksHydrated.value = false
   await hydrateCloudTasks()
+}
+
+const syncEconomyFromCloud = async () => {
+  cloudEconomyHydrated.value = false
+  await hydrateEconomyFromCloud()
 }
 
 const setPetPersonaPrompt = (prompt: string) => {
@@ -1084,6 +1431,24 @@ const sendChatMessage = async (content: string, forcedEmotion?: EmotionTag) => {
   }
 
   updatePet(chatImpact[emotionTag])
+  const todayKey = createdAt.slice(0, 10)
+  const chatRewardRemaining = Math.max(0, 20 - (economy.value.dailyChatRewards[todayKey] ?? 0))
+  const chatRewardAmount = Math.min(2, chatRewardRemaining)
+  const chatReward = chatRewardAmount > 0
+    ? awardCoins('chat', chatRewardAmount, `chat:${todayKey}:${userMessage.id}`)
+    : { awarded: false, amount: 0, coins: economy.value.coins }
+
+  if (chatReward.awarded) {
+    setEconomy({
+      ...economy.value,
+      dailyChatRewards: {
+        ...economy.value.dailyChatRewards,
+        [todayKey]: (economy.value.dailyChatRewards[todayKey] ?? 0) + chatReward.amount,
+      },
+    })
+    persistEconomy()
+  }
+
   logSyncEvent(settings.value.language === 'zh' ? `聊天摘要已写入联动队列：${reply}` : `Chat summary written to sync queue: ${reply}`, {
     target: settings.value.allowCrossDeviceSummary ? 'desktop' : 'miniapp',
     actionType: 'chat-summary',
@@ -1091,7 +1456,10 @@ const sendChatMessage = async (content: string, forcedEmotion?: EmotionTag) => {
   })
   persistState()
 
-  return reply
+  return {
+    reply,
+    coinReward: chatReward,
+  }
 }
 
 const clearMessages = () => {
@@ -1291,6 +1659,7 @@ hydrateState()
 void hydrateCloudChatHistory()
 void hydrateCloudTasks()
 void hydrateCloudCourseSchedule()
+void hydrateEconomyFromCloud()
 
 export const useKokoState = () => ({
   pet,
@@ -1303,6 +1672,8 @@ export const useKokoState = () => ({
   archive,
   snapshots,
   metrics,
+  economy,
+  shopItems,
   petPersonaPrompt,
   pendingTasks,
   completedTasks,
@@ -1324,6 +1695,13 @@ export const useKokoState = () => ({
   clearCourseSchedule,
   syncCourseScheduleFromCloud,
   syncTasksFromCloud,
+  syncEconomyFromCloud,
+  hydrateEconomyFromCloud,
+  persistEconomyToCloud,
+  awardCoins,
+  purchaseShopItem,
+  calculateTaskCoinReward,
+  completeTaskWithReward: (taskId: string) => setTaskStatus(taskId, 'completed'),
   setTaskStatus,
   getPetQuickReply,
   sendChatMessage,

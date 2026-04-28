@@ -32,6 +32,8 @@ export type MiniGameType = 'catch' | 'bubble'
 export type CareActionKey = 'feedMeal' | 'feedSnack' | 'feedWater' | 'clean' | 'heal' | 'rest' | 'play'
 export type DeviceType = 'miniapp' | 'desktop' | 'm5'
 export type SyncStatus = 'success' | 'offline' | 'retrying'
+export type EconomyRewardSource = 'task' | 'chat' | 'mini-game' | 'system'
+export type ShopItemId = 'snack-pack' | 'toy-ball' | 'clean-kit' | 'home-decor'
 export type FacingDirection =
   | 'front'
   | 'front-left'
@@ -184,6 +186,41 @@ export interface AppMetrics {
   completedTasks: number
   companionMinutes: number
   coins: number
+}
+
+export interface EconomyRewardLedgerEntry {
+  key: string
+  source: EconomyRewardSource
+  amount: number
+  createdAt: string
+}
+
+export interface ShopPurchaseRecord {
+  id: string
+  itemId: ShopItemId
+  price: number
+  createdAt: string
+}
+
+export interface CompanionEconomy {
+  coins: number
+  inventory: Record<string, number>
+  purchaseHistory: ShopPurchaseRecord[]
+  rewardLedger: Record<string, EconomyRewardLedgerEntry>
+  dailyChatRewards: Record<string, number>
+  updatedAt: string
+}
+
+export interface ShopItem {
+  id: ShopItemId
+  name: string
+  description: string
+  price: number
+  moodDelta?: number
+  hungerDelta?: number
+  intimacyDelta?: number
+  cleanDelta?: number
+  healthDelta?: number
 }
 
 export interface MiniGameResult {

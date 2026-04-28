@@ -69,6 +69,7 @@ const {
   getPetQuickReply,
   getDigestStatus,
   messages,
+  economy,
   sendChatMessage,
   clearMessages,
   settings,
@@ -262,9 +263,15 @@ const submitChat = async (content: string) => {
   if (!content.trim() || sending.value) return
   sending.value = true
   try {
-    await sendChatMessage(content)
+    const result = await sendChatMessage(content)
     chatPromptHint.value = pickChatPromptHint()
     showPetBubbleFor(lastAssistantMessage.value, 2600)
+    if (result?.coinReward.awarded) {
+      uni.showToast({
+        title: `+${result.coinReward.amount}`,
+        icon: 'none',
+      })
+    }
   } finally {
     sending.value = false
   }
@@ -317,6 +324,10 @@ onMounted(() => {
         <view class="home-topbar__title-block">
           <view class="home-topbar__eyebrow">KOKO HOME</view>
           <view class="home-topbar__title">{{ pet.name }}</view>
+        </view>
+        <view class="home-topbar__coins">
+          <view class="home-coin-icon" />
+          <text>{{ economy.coins }}</text>
         </view>
       </view>
 
@@ -611,6 +622,7 @@ onMounted(() => {
 .home-topbar {
   align-items: flex-start;
   display: flex;
+  justify-content: space-between;
 }
 
 .home-topbar__title-block {
@@ -627,6 +639,46 @@ onMounted(() => {
   font-size: 44rpx;
   font-weight: 700;
   margin-top: 6rpx;
+}
+
+.home-topbar__coins {
+  align-items: center;
+  background: rgba(255, 253, 248, 0.88);
+  border: 2rpx solid rgba(240, 185, 74, 0.32);
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 24rpx rgba(167, 124, 72, 0.12);
+  color: #735420;
+  display: inline-flex;
+  font-size: 25rpx;
+  font-weight: 800;
+  gap: 10rpx;
+  line-height: 1;
+  padding: 16rpx 22rpx;
+}
+
+.home-coin-icon {
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.82) 0, rgba(255, 255, 255, 0.82) 8rpx, transparent 9rpx),
+    linear-gradient(135deg, #ffe08a, #f0b94a 62%, #c98624);
+  border: 3rpx solid rgba(139, 93, 22, 0.18);
+  border-radius: 50%;
+  box-shadow: inset 0 -4rpx 0 rgba(130, 88, 20, 0.14), 0 4rpx 8rpx rgba(167, 124, 72, 0.16);
+  box-sizing: border-box;
+  height: 34rpx;
+  position: relative;
+  width: 34rpx;
+}
+
+.home-coin-icon::after {
+  background: rgba(116, 79, 19, 0.24);
+  border-radius: 999rpx;
+  content: '';
+  height: 16rpx;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 6rpx;
 }
 
 .home-stage {

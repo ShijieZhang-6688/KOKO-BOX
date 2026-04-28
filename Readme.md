@@ -35,6 +35,7 @@ Create these CloudBase database collections:
 - `user_settings`
 - `pet_dialogue_histories`
 - `course_schedules`
+- `user_tasks`
 
 Recommended permission for the first version: users can only read and write their own records. Keep identity-sensitive creation and updates in cloud functions so `_openid` cannot be forged by the client.
 
@@ -71,6 +72,15 @@ The imported timetable can now sync across devices for the same WeChat account.
 2. Install dependencies for this function.
 3. Upload and deploy function `schedule-sync`.
 4. Ensure the `course_schedules` collection already exists before testing timetable import on multiple devices.
+
+### 6. Deploy the task and DDL sync cloud function
+
+Tasks and DDL items sync through cloud function `task-sync`. Without deploying this function, each device will keep using its local cache and task lists will not match.
+
+1. In WeChat DevTools, find `cloudfunctions/task-sync`.
+2. Install dependencies for this function.
+3. Upload and deploy function `task-sync`.
+4. Ensure the `user_tasks` collection already exists before testing tasks on multiple devices.
 
 Important security note: if a key was ever committed in client code before, rotate that key in DashScope immediately and only keep the new key in cloud function env variables.
 

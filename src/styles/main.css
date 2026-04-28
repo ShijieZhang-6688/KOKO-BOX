@@ -3416,8 +3416,8 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.planner-punch-editor__actions--with-danger {
-  grid-template-columns: 1fr 1fr 1.2fr;
+.planner-punch-editor__actions--with-delete {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .planner-punch-picker-row {
@@ -3463,6 +3463,7 @@ button {
 
 .planner-punch-editor__danger {
   background: rgba(255, 241, 238, 0.96);
+  border: 1px solid rgba(184, 75, 75, 0.18);
   color: #b84b4b;
 }
 

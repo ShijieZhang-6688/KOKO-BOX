@@ -31,7 +31,7 @@ const PET_MAX_X = 90
 const PET_MIN_Y = 26
 const PET_MAX_Y = 92
 
-const { pet } = useKokoState()
+const { pet, economy, shopItems, todayTasks, completedTasks, settings, purchaseShopItem, syncEconomyFromCloud } = useKokoState()
 const { t } = useLanguage()
 
 const hotspots = computed<BuildingHotspot[]>(() => [
@@ -43,6 +43,7 @@ const hotspots = computed<BuildingHotspot[]>(() => [
 ])
 
 const activeBuilding = ref<BuildingHotspot | null>(null)
+const shopMessage = ref('')
 const petPosition = ref({ x: 52, y: 76 })
 const petMoveDurationMs = ref(0)
 const petMirror = ref(false)
@@ -104,6 +105,35 @@ const petStyle = computed(() => ({
   transitionDuration: `${petMoveDurationMs.value}ms`,
 }))
 
+const townPendingTasks = computed(() => todayTasks.value.slice(0, 3))
+const townCompletedTasks = computed(() => completedTasks.value.slice(0, 3))
+const shopText = computed(() => ({
+  owned: settings.value.language === 'zh' ? '已拥有' : 'Owned',
+  openTasks: settings.value.language === 'zh' ? '打开待办' : 'Open Tasks',
+  openHomeChat: settings.value.language === 'zh' ? '回首页聊天' : 'Open Home Chat',
+  chatHint: settings.value.language === 'zh' ? '和 Koko 聊天，每天最多可获得 20 金币。' : 'Chat with Koko and earn up to 20 coins every day.',
+  pending: settings.value.language === 'zh' ? '待办' : 'pending',
+  done: settings.value.language === 'zh' ? '完成' : 'done',
+}))
+
+const shopItemCopy = (item: (typeof shopItems)[number]) => {
+  if (settings.value.language !== 'zh') {
+    return {
+      name: item.name,
+      description: item.description,
+    }
+  }
+
+  const zhCopy = {
+    'snack-pack': { name: '零食包', description: '让 Koko 心情更好，也补充一点饱腹感。' },
+    'toy-ball': { name: '玩具球', description: '陪 Koko 玩一会儿，提升心情和亲密度。' },
+    'clean-kit': { name: '清洁套装', description: '保持清爽，提升清洁、健康和心情。' },
+    'home-decor': { name: '小屋装饰', description: '给小屋添一点亮色，让 Koko 更开心。' },
+  } as const
+
+  return zhCopy[item.id]
+}
+
 const stopMoveTimer = () => {
   if (moveTimer) clearTimeout(moveTimer)
   moveTimer = undefined
@@ -158,10 +188,34 @@ const movePetFromMapTap = (event: any) => {
 
 const openBuildingPopup = (spot: BuildingHotspot) => {
   activeBuilding.value = spot
+  shopMessage.value = ''
 }
 
 const closeBuildingPopup = () => {
   activeBuilding.value = null
+  shopMessage.value = ''
+}
+
+const buyShopItem = (itemId: (typeof shopItems)[number]['id']) => {
+  const result = purchaseShopItem(itemId)
+  shopMessage.value = result.message
+  uni.showToast({
+    title: result.message,
+    icon: 'none',
+  })
+
+  if (result.success) {
+    petAction.value = 'sparkle'
+    queueIdle(2200)
+  }
+}
+
+const goPlanner = () => {
+  uni.switchTab({ url: '/pages/planner/index' })
+}
+
+const goHome = () => {
+  uni.switchTab({ url: '/pages/home/index' })
 }
 
 watch(
@@ -178,6 +232,7 @@ watch(
 
 onMounted(() => {
   void ensureTownMap()
+  void syncEconomyFromCloud()
   petMirror.value = false
   roamTimer = setInterval(() => {
     roamSomewhere()
@@ -220,7 +275,43 @@ onBeforeUnmount(() => {
       <view class="town-popup" @click.stop>
         <view class="town-popup__title">{{ activeBuilding.name }}</view>
         <view class="town-popup__description">{{ activeBuilding.description }}</view>
-        <button class="town-popup__button" @click="closeBuildingPopup">{{ t.town.ok }}</button>
+
+        <view v-if="activeBuilding.id === 'shop'" class="town-shop">
+          <view class="town-shop__balance">
+            <view class="town-coin-icon" />
+            <text>{{ economy.coins }}</text>
+          </view>
+          <view
+            v-for="item in shopItems"
+            :key="item.id"
+            class="town-shop__item"
+          >
+            <view>
+              <view class="town-shop__name">{{ shopItemCopy(item).name }}</view>
+              <view class="town-shop__copy">{{ shopItemCopy(item).description }}</view>
+              <view class="town-shop__owned">{{ shopText.owned }} {{ economy.inventory[item.id] ?? 0 }}</view>
+            </view>
+            <button class="town-shop__buy" @click="buyShopItem(item.id)">
+              <view class="town-coin-icon town-coin-icon--small" />
+              <text>{{ item.price }}</text>
+            </button>
+          </view>
+          <view v-if="shopMessage" class="town-shop__message">{{ shopMessage }}</view>
+        </view>
+
+        <view v-else-if="activeBuilding.id === 'task-board'" class="town-board">
+          <view class="town-board__stat">{{ townPendingTasks.length }} {{ shopText.pending }} · {{ completedTasks.length }} {{ shopText.done }}</view>
+          <view v-for="task in townPendingTasks" :key="task.id" class="town-board__task">{{ task.title }}</view>
+          <view v-for="task in townCompletedTasks" :key="task.id" class="town-board__task town-board__task--done">{{ task.title }}</view>
+          <button class="town-popup__button" @click="goPlanner">{{ shopText.openTasks }}</button>
+        </view>
+
+        <view v-else-if="activeBuilding.id === 'talk-house'" class="town-board">
+          <view class="town-board__stat">{{ shopText.chatHint }}</view>
+          <button class="town-popup__button" @click="goHome">{{ shopText.openHomeChat }}</button>
+        </view>
+
+        <button v-else class="town-popup__button" @click="closeBuildingPopup">{{ t.town.ok }}</button>
       </view>
     </view>
   </view>
@@ -385,6 +476,134 @@ onBeforeUnmount(() => {
 
 .town-popup__button::after {
   border: none;
+}
+
+.town-shop {
+  margin-top: 22rpx;
+}
+
+.town-shop__balance {
+  align-items: center;
+  background: rgba(255, 232, 173, 0.72);
+  border-radius: 999rpx;
+  color: #735420;
+  display: inline-flex;
+  gap: 10rpx;
+  font-size: 25rpx;
+  font-weight: 800;
+  line-height: 1;
+  padding: 14rpx 22rpx;
+}
+
+.town-coin-icon {
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.82) 0, rgba(255, 255, 255, 0.82) 8rpx, transparent 9rpx),
+    linear-gradient(135deg, #ffe08a, #f0b94a 62%, #c98624);
+  border: 3rpx solid rgba(139, 93, 22, 0.18);
+  border-radius: 50%;
+  box-shadow: inset 0 -4rpx 0 rgba(130, 88, 20, 0.14), 0 4rpx 8rpx rgba(167, 124, 72, 0.16);
+  box-sizing: border-box;
+  height: 34rpx;
+  position: relative;
+  width: 34rpx;
+}
+
+.town-coin-icon::after {
+  background: rgba(116, 79, 19, 0.24);
+  border-radius: 999rpx;
+  content: '';
+  height: 16rpx;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 6rpx;
+}
+
+.town-coin-icon--small {
+  height: 28rpx;
+  width: 28rpx;
+}
+
+.town-coin-icon--small::after {
+  height: 13rpx;
+  width: 5rpx;
+}
+
+.town-shop__item {
+  align-items: center;
+  background: rgba(245, 250, 238, 0.72);
+  border: 2rpx solid rgba(95, 199, 168, 0.16);
+  border-radius: 22rpx;
+  display: flex;
+  gap: 18rpx;
+  justify-content: space-between;
+  margin-top: 16rpx;
+  padding: 18rpx;
+}
+
+.town-shop__name {
+  color: #253047;
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+.town-shop__copy,
+.town-shop__owned,
+.town-board__stat {
+  color: #7d8a74;
+  font-size: 23rpx;
+  line-height: 1.45;
+  margin-top: 6rpx;
+}
+
+.town-shop__buy {
+  align-items: center;
+  background: linear-gradient(135deg, #ffe08a, #f0b94a);
+  border: none;
+  border-radius: 999rpx;
+  color: #513915;
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 25rpx;
+  font-weight: 900;
+  gap: 8rpx;
+  height: 70rpx;
+  justify-content: center;
+  line-height: 1;
+  min-width: 86rpx;
+  padding: 0 18rpx;
+}
+
+.town-shop__buy::after {
+  border: none;
+}
+
+.town-shop__message {
+  color: #365f56;
+  font-size: 24rpx;
+  font-weight: 700;
+  margin-top: 16rpx;
+}
+
+.town-board {
+  margin-top: 20rpx;
+}
+
+.town-board__task {
+  background: rgba(255, 255, 255, 0.76);
+  border-radius: 18rpx;
+  color: #365f56;
+  font-size: 25rpx;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 12rpx;
+  padding: 14rpx 16rpx;
+}
+
+.town-board__task--done {
+  color: #8a7a68;
+  text-decoration: line-through;
 }
 
 :deep(.page-shell) {

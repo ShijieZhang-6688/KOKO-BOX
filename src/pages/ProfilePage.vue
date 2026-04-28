@@ -324,6 +324,7 @@ onMounted(async () => {
 
 .profile-settings-entry {
   align-items: flex-start;
+  box-sizing: border-box;
   color: #253047;
   display: flex;
   flex-direction: column;
@@ -331,9 +332,10 @@ onMounted(async () => {
   font-weight: 700;
   gap: 6rpx;
   line-height: 1.2;
-  margin-top: 2rpx;
+  margin: 2rpx 0 0;
   padding: 22rpx;
   text-align: left;
+  width: 100%;
 }
 
 .profile-settings-entry::after {

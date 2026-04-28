@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { useCourseScheduleImporter } from '../composables/useCourseScheduleImporter'
 import { useKokoState } from '../composables/useKokoState'
 import { useLanguage } from '../composables/useLanguage'
 import type { Task, TaskCategory, TaskKind } from '../types/koko'
 
-const { tasks, todayTasks, completedTasks, courseSchedule, createTask, updateTask, deleteTask, setTaskStatus } = useKokoState()
+const { tasks, todayTasks, completedTasks, courseSchedule, createTask, updateTask, deleteTask, setTaskStatus, completeTaskWithReward, syncTasksFromCloud } = useKokoState()
 const { t } = useLanguage()
 
 type StyledTaskCard = Task & {
@@ -35,6 +36,9 @@ const formTitle = ref('')
 const formDate = ref('')
 const formIcon = ref(iconOptions[2])
 const formBorderColor = ref(colorOptions[0])
+const deleteLabel = 'Delete'
+const coinLabel = computed(() => (t.value.nav.home === '首页' ? '金币' : 'coins'))
+const rewardClaimedLabel = computed(() => (t.value.nav.home === '首页' ? '奖励已领取' : 'Reward claimed'))
 
 const todayDate = () => new Date().toISOString().slice(0, 10)
 const defaultIconForKind = (kind: TaskKind) => (kind === 'ddl' ? '⏰' : '📋')
@@ -166,10 +170,14 @@ const confirmDeleteTask = () => {
     return
   }
 
+  confirmDeleteById(editingTaskId.value, formTitle.value, closeEditor)
+}
+
+const confirmDeleteById = (taskId: string, title: string, onDeleted?: () => void) => {
   uni.showModal({
-    title: t.value.plannerTask.delete,
-    content: formTitle.value,
-    confirmText: t.value.plannerTask.delete,
+    title: deleteLabel,
+    content: title,
+    confirmText: deleteLabel,
     cancelText: t.value.planner.cancel,
     confirmColor: '#b84b4b',
     success: (result) => {
@@ -177,19 +185,28 @@ const confirmDeleteTask = () => {
         return
       }
 
-      deleteTask(editingTaskId.value)
-      closeEditor()
+      deleteTask(taskId)
+      onDeleted?.()
+      uni.showToast({ title: deleteLabel, icon: 'none' })
     },
   })
 }
 
 const completeTask = (taskId: string) => {
-  setTaskStatus(taskId, 'completed')
+  const result = completeTaskWithReward(taskId)
+  uni.showToast({
+    title: result?.awarded ? `+${result.amount} ${coinLabel.value}` : rewardClaimedLabel.value,
+    icon: 'none',
+  })
 }
 
 const undoCompleteTask = (taskId: string) => {
   setTaskStatus(taskId, 'pending')
 }
+
+onShow(() => {
+  void syncTasksFromCloud()
+})
 </script>
 
 <template>
@@ -200,7 +217,7 @@ const undoCompleteTask = (taskId: string) => {
       <view class="planner-punch-section planner-punch-ddl-section">
         <view class="planner-punch-section__title">{{ t.planner.ddl }}</view>
         <view v-if="ddlCards.length" class="planner-punch-ddl-list">
-          <button
+          <view
             v-for="task in ddlCards"
             :key="task.id"
             class="planner-punch-ddl-item"
@@ -212,7 +229,7 @@ const undoCompleteTask = (taskId: string) => {
               <view>{{ task.title }}</view>
             </view>
             <view class="planner-punch-ddl-item__date">{{ task.dueDate }}</view>
-          </button>
+          </view>
         </view>
         <view v-else class="planner-punch-ddl-empty">{{ t.planner.noDdl }}</view>
       </view>
@@ -315,8 +332,8 @@ const undoCompleteTask = (taskId: string) => {
           />
         </view>
 
-        <view class="planner-punch-editor__actions" :class="{ 'planner-punch-editor__actions--with-danger': editorMode === 'edit' }">
-          <button v-if="editorMode === 'edit'" class="planner-punch-editor__danger" @click="confirmDeleteTask">{{ t.plannerTask.delete }}</button>
+        <view class="planner-punch-editor__actions" :class="{ 'planner-punch-editor__actions--with-delete': editorMode === 'edit' }">
+          <button v-if="editorMode === 'edit'" class="planner-punch-editor__danger" @click.stop="confirmDeleteTask">{{ deleteLabel }}</button>
           <button class="planner-punch-editor__ghost" @click="closeEditor">{{ t.planner.cancel }}</button>
           <button class="planner-punch-editor__primary" @click="submitEditor">{{ t.planner.save }}</button>
         </view>
