@@ -3032,17 +3032,18 @@ button {
 
 .planner-schedule-page {
   background: #fffaf0;
-  min-height: 100vh;
-  padding: calc(142px + env(safe-area-inset-top)) 0 calc(8px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  height: 100vh;
+  overflow: hidden;
+  padding: calc(142px + env(safe-area-inset-top)) 0 0;
 }
 
 .planner-schedule-topbar {
-  align-items: center;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: 42px minmax(0, 1fr) 94px;
+  box-sizing: border-box;
+  display: block;
+  height: calc(50px + env(safe-area-inset-top));
   left: 0;
-  padding: calc(84px + env(safe-area-inset-top)) 14px 8px;
+  padding: calc(144px + env(safe-area-inset-top)) 14px 8px;
   pointer-events: none;
   position: fixed;
   right: 0;
@@ -3066,7 +3067,11 @@ button {
   margin: 0;
   padding: 0;
   pointer-events: auto;
+  position: absolute;
+  bottom: 8px;
+  left: 14px;
   width: 42px;
+  z-index: 2;
 }
 
 .planner-schedule-back::after {
@@ -3077,12 +3082,18 @@ button {
   color: #2d2b2d;
   font-size: 1rem;
   font-weight: 900;
+  left: 50%;
   line-height: 1.2;
+  position: absolute;
   text-align: center;
+  bottom: 19px;
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 1;
 }
 
 .planner-schedule-page-body {
-  height: calc(100vh - 142px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  height: calc(100vh - 142px - env(safe-area-inset-top));
   overflow: hidden;
   position: relative;
 }
@@ -3097,7 +3108,8 @@ button {
 
 .planner-schedule-grid--page {
   height: 100%;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 0 0 8px;
 }
 
@@ -3134,7 +3146,8 @@ button {
 }
 
 .planner-schedule-grid {
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   width: 100%;
 }
 
@@ -3144,7 +3157,7 @@ button {
   border-bottom: 1px solid rgba(196, 156, 82, 0.14);
   border-right: 1px solid rgba(196, 156, 82, 0.14);
   box-sizing: border-box;
-  padding: 8px 6px;
+  padding: 6px 5px;
 }
 
 .planner-schedule-head {
@@ -3152,7 +3165,7 @@ button {
   background: #fff6e6;
   color: #805d2c;
   display: flex;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 900;
   justify-content: center;
   position: sticky;
@@ -3171,7 +3184,7 @@ button {
   background: #fffaf0;
   color: #8e6327;
   display: flex;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 900;
   justify-content: center;
   line-height: 1.25;
@@ -3184,7 +3197,7 @@ button {
 
 .planner-schedule-cell {
   background: rgba(255, 252, 246, 0.78);
-  min-height: 54px;
+  min-height: 35px;
 }
 
 .planner-schedule-cell--target {
@@ -3193,6 +3206,7 @@ button {
 }
 
 .planner-schedule-course {
+  align-content: start;
   background: #ffffff;
   border-left: 3px solid #d9cff3;
   border-radius: 8px;
@@ -3201,10 +3215,10 @@ button {
   color: #3d3442;
   display: grid;
   gap: 2px;
-  margin: 6px;
-  min-height: 42px;
+  margin: 3px;
+  min-height: 29px;
   overflow: hidden;
-  padding: 8px;
+  padding: 6px 6px 5px;
   position: relative;
   touch-action: none;
   transition: box-shadow 0.16s ease, transform 0.16s ease;
@@ -3233,17 +3247,17 @@ button {
 }
 
 .planner-schedule-course__name {
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   font-weight: 900;
-  line-height: 1.28;
+  line-height: 1.18;
   overflow-wrap: anywhere;
 }
 
 .planner-schedule-course__meta {
   color: #8a785f;
-  font-size: 0.6rem;
+  font-size: 0.54rem;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.15;
   overflow-wrap: anywhere;
 }
 
@@ -3265,13 +3279,16 @@ button {
 }
 
 .planner-schedule-change--top {
+  bottom: 8px;
   box-shadow: 0 12px 24px rgba(105, 76, 35, 0.16);
   font-size: 0.78rem;
-  justify-self: end;
+  position: absolute;
+  right: 14px;
   min-height: 36px;
   min-width: 86px;
   padding: 0 12px;
   pointer-events: auto;
+  z-index: 2;
 }
 
 .planner-schedule-fab {

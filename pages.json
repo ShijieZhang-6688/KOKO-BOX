@@ -58,6 +58,7 @@
     {
       "path": "pages/schedule/index",
       "style": {
+        "disableScroll": true,
         "navigationBarTitleText": "Schedule",
         "navigationStyle": "custom"
       }

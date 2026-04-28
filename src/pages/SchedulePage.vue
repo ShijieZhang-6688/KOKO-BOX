@@ -37,10 +37,10 @@ type DragOrigin = {
 const DEFAULT_START_MINUTES = 9 * 60
 const DEFAULT_END_MINUTES = 19 * 60
 const SLOT_MINUTES = 30
-const TIME_COLUMN_WIDTH = 76
-const DAY_COLUMN_WIDTH = 96
-const ROW_HEIGHT = 54
-const HEADER_HEIGHT = 54
+const TIME_COLUMN_WIDTH = 68
+const DAY_COLUMN_WIDTH = 88
+const ROW_HEIGHT = 35
+const HEADER_HEIGHT = 48
 
 const { courseSchedule, setCourseSchedule } = useKokoState()
 const { t } = useLanguage()
@@ -343,7 +343,7 @@ const backToPlanner = () => {
       <scroll-view
         class="planner-schedule-grid planner-schedule-grid--page"
         :scroll-x="!activeDragCourseId"
-        :scroll-y="!activeDragCourseId"
+        :scroll-y="false"
         enhanced
         :show-scrollbar="false"
         @scroll="handleScheduleScroll"
