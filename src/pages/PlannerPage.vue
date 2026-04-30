@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useCourseScheduleImporter } from '../composables/useCourseScheduleImporter'
 import { useKokoState } from '../composables/useKokoState'
@@ -8,6 +8,7 @@ import type { Task, TaskCategory, TaskKind } from '../types/koko'
 
 const { tasks, todayTasks, completedTasks, courseSchedule, createTask, updateTask, deleteTask, setTaskStatus, completeTaskWithReward, syncTasksFromCloud } = useKokoState()
 const { t } = useLanguage()
+const MARKED_CALENDAR_DATES_KEY = 'koko-planner-marked-dates-v1'
 
 type StyledTaskCard = Task & {
   categoryIcon: string
@@ -34,14 +35,141 @@ const editorKind = ref<TaskKind>('task')
 const editingTaskId = ref('')
 const formTitle = ref('')
 const formDate = ref('')
+const formTime = ref('')
 const formIcon = ref(iconOptions[2])
 const formBorderColor = ref(colorOptions[0])
 const deleteLabel = 'Delete'
 const coinLabel = computed(() => (t.value.nav.home === '首页' ? '金币' : 'coins'))
 const rewardClaimedLabel = computed(() => (t.value.nav.home === '首页' ? '奖励已领取' : 'Reward claimed'))
+const calendarNow = ref(new Date())
+let calendarTimer: ReturnType<typeof setInterval> | undefined
 
 const todayDate = () => new Date().toISOString().slice(0, 10)
+const toIsoDate = (date: Date) => {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+const parseIsoDate = (iso: string) => {
+  const [year, month, day] = iso.split('-').map((value) => Number(value))
+  return new Date(year, (month || 1) - 1, day || 1)
+}
+const isZh = computed(() => t.value.nav.home === '首页')
+const calendarCursor = ref(new Date())
+const yearCalendarVisible = ref(false)
+const yearCursor = ref(new Date().getFullYear())
+const selectedCalendarDate = ref(todayDate())
+const dateActionVisible = ref(false)
+const markedDates = ref<string[]>([])
+const markedDateSet = computed(() => new Set(markedDates.value))
+const calendarHeader = computed(() => {
+  const now = calendarNow.value
+  return now.toLocaleString(isZh.value ? 'zh-CN' : 'en-US', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+})
+const calendarCopy = computed(() => ({
+  live: isZh.value ? '实时日历' : 'Live calendar',
+  openYear: isZh.value ? '全年' : 'Year',
+  today: isZh.value ? '今天' : 'Today',
+  prevWeek: isZh.value ? '上一周' : 'Previous week',
+  nextWeek: isZh.value ? '下一周' : 'Next week',
+  prevYear: isZh.value ? '上一年' : 'Prev year',
+  nextYear: isZh.value ? '下一年' : 'Next year',
+  close: isZh.value ? '关闭' : 'Close',
+  createTask: isZh.value ? '创建待办' : 'Create todo',
+  createDdl: isZh.value ? '创建 DDL' : 'Create DDL',
+  mark: isZh.value ? '标记日期' : 'Mark date',
+  unmark: isZh.value ? '取消标记' : 'Unmark',
+  tasks: isZh.value ? '当天事项' : 'Plans on this date',
+  noTasks: isZh.value ? '这一天还没有安排，可以新建一个轻量待办。' : 'No plans yet. Add a light todo for this date.',
+  dateLabel: isZh.value ? '日期' : 'Date',
+  timeLabel: isZh.value ? '提醒时间' : 'Reminder time',
+  ddlTimeLabel: isZh.value ? 'DDL 时间' : 'DDL time',
+  optionalDate: isZh.value ? '选择日期（可选）' : 'Choose date (optional)',
+  clearDate: isZh.value ? '清除日期' : 'Clear date',
+  marked: isZh.value ? '已标记' : 'Marked',
+}))
+const calendarRangeLabel = computed(() => {
+  const start = new Date(calendarCursor.value)
+  start.setDate(start.getDate() - 2)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  const locale = isZh.value ? 'zh-CN' : 'en-US'
+  const formatter = new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' })
+  return `${formatter.format(start)} - ${formatter.format(end)}`
+})
+const calendarTasksForDate = (iso: string) =>
+  tasks.value.filter((task) => {
+    if (task.dueDate) {
+      return task.dueDate === iso
+    }
+    return task.repeatType === 'daily'
+  })
+const selectedCalendarTasks = computed(() =>
+  calendarTasksForDate(selectedCalendarDate.value)
+    .slice()
+    .sort((left, right) => `${left.dueDate ?? ''} ${left.time}`.localeCompare(`${right.dueDate ?? ''} ${right.time}`)),
+)
+const syncedCalendarDays = computed(() => {
+  const base = calendarCursor.value
+  const todayIso = toIsoDate(calendarNow.value)
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(base)
+    date.setDate(base.getDate() + index - 2)
+    const iso = toIsoDate(date)
+    const dayTasks = calendarTasksForDate(iso).filter((task) => task.status !== 'completed')
+    return {
+      iso,
+      day: date.getDate(),
+      weekday: date.toLocaleDateString(isZh.value ? 'zh-CN' : 'en-US', { weekday: 'short' }),
+      active: iso === todayIso,
+      selected: iso === selectedCalendarDate.value,
+      marked: markedDateSet.value.has(iso),
+      count: dayTasks.length,
+    }
+  })
+})
 const defaultIconForKind = (kind: TaskKind) => (kind === 'ddl' ? '⏰' : '📋')
+const weekHeaders = computed(() =>
+  Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(2026, 0, 4 + index)
+    return date.toLocaleDateString(isZh.value ? 'zh-CN' : 'en-US', { weekday: 'short' })
+  }),
+)
+const yearCalendarMonths = computed(() =>
+  Array.from({ length: 12 }, (_, monthIndex) => {
+    const firstDay = new Date(yearCursor.value, monthIndex, 1)
+    const daysInMonth = new Date(yearCursor.value, monthIndex + 1, 0).getDate()
+    const todayIso = toIsoDate(calendarNow.value)
+    const blanks = Array.from({ length: firstDay.getDay() }, () => null)
+    const days = Array.from({ length: daysInMonth }, (_, dayIndex) => {
+      const date = new Date(yearCursor.value, monthIndex, dayIndex + 1)
+      const iso = toIsoDate(date)
+      return {
+        iso,
+        day: dayIndex + 1,
+        today: iso === todayIso,
+        selected: iso === selectedCalendarDate.value,
+        marked: markedDateSet.value.has(iso),
+        count: calendarTasksForDate(iso).filter((task) => task.status !== 'completed').length,
+      }
+    })
+    const cells = [...blanks, ...days]
+    while (cells.length % 7 !== 0) cells.push(null)
+    return {
+      key: `${yearCursor.value}-${monthIndex + 1}`,
+      name: firstDay.toLocaleDateString(isZh.value ? 'zh-CN' : 'en-US', { month: 'long' }),
+      cells,
+    }
+  }),
+)
 const defaultBorderForKind = (kind: TaskKind) => (kind === 'ddl' ? colorOptions[2] : colorOptions[0])
 
 const toStyledCard = (task: Task, index: number): StyledTaskCard => {
@@ -100,6 +228,89 @@ const openSchedulePage = () => {
   uni.navigateTo({ url: '/pages/schedule/index' })
 }
 
+const readMarkedDates = () => {
+  if (typeof uni === 'undefined' || typeof uni.getStorageSync !== 'function') {
+    return
+  }
+  const stored = uni.getStorageSync(MARKED_CALENDAR_DATES_KEY) as unknown
+  markedDates.value = Array.isArray(stored)
+    ? stored.filter((value): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)).slice(0, 500)
+    : []
+}
+
+const persistMarkedDates = () => {
+  if (typeof uni === 'undefined' || typeof uni.setStorageSync !== 'function') {
+    return
+  }
+  uni.setStorageSync(MARKED_CALENDAR_DATES_KEY, markedDates.value)
+}
+
+const shiftCalendarWeek = (offset: number) => {
+  const nextDate = new Date(calendarCursor.value)
+  nextDate.setDate(nextDate.getDate() + offset * 7)
+  calendarCursor.value = nextDate
+}
+
+const jumpCalendarToday = () => {
+  const today = new Date()
+  calendarNow.value = today
+  calendarCursor.value = today
+  selectedCalendarDate.value = toIsoDate(today)
+}
+
+const openYearCalendar = () => {
+  yearCursor.value = calendarCursor.value.getFullYear()
+  yearCalendarVisible.value = true
+}
+
+const closeYearCalendar = () => {
+  yearCalendarVisible.value = false
+}
+
+const shiftYearCalendar = (offset: number) => {
+  yearCursor.value += offset
+}
+
+const openDateActions = (iso: string) => {
+  selectedCalendarDate.value = iso
+  calendarCursor.value = parseIsoDate(iso)
+  dateActionVisible.value = true
+}
+
+const closeDateActions = () => {
+  dateActionVisible.value = false
+}
+
+const toggleMarkedDate = () => {
+  const iso = selectedCalendarDate.value
+  if (markedDateSet.value.has(iso)) {
+    markedDates.value = markedDates.value.filter((date) => date !== iso)
+  } else {
+    markedDates.value = [iso, ...markedDates.value].slice(0, 500)
+  }
+  persistMarkedDates()
+}
+
+const createCalendarTask = (kind: TaskKind) => {
+  const iso = selectedCalendarDate.value || todayDate()
+  closeDateActions()
+  closeYearCalendar()
+  openEditor('create', kind)
+  formDate.value = iso
+  formTime.value = kind === 'ddl' ? '23:59' : '09:00'
+}
+
+const formatCalendarDateLabel = (iso: string) => {
+  const date = parseIsoDate(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return date.toLocaleDateString(isZh.value ? 'zh-CN' : 'en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  })
+}
+
 const openEditor = (mode: EditorMode, kind: TaskKind, task?: Task) => {
   const fallbackCategory = kind === 'ddl' ? 'schedule' : 'work'
   const fallbackMeta = categoryMeta.value[task?.category ?? fallbackCategory]
@@ -108,7 +319,8 @@ const openEditor = (mode: EditorMode, kind: TaskKind, task?: Task) => {
   editorKind.value = kind
   editingTaskId.value = task?.id ?? ''
   formTitle.value = task?.title ?? ''
-  formDate.value = kind === 'ddl' ? task?.dueDate || todayDate() : ''
+  formDate.value = task?.dueDate || (kind === 'ddl' ? todayDate() : '')
+  formTime.value = task?.time || (kind === 'ddl' ? '23:59' : '09:00')
   formIcon.value = task?.icon || fallbackMeta?.icon || defaultIconForKind(kind)
   formBorderColor.value = task?.borderColor || defaultBorderForKind(kind)
   showCreateChoice.value = false
@@ -120,6 +332,7 @@ const closeEditor = () => {
   editingTaskId.value = ''
   formTitle.value = ''
   formDate.value = ''
+  formTime.value = ''
 }
 
 const chooseCreateKind = (kind: TaskKind) => {
@@ -143,7 +356,8 @@ const submitEditor = () => {
     kind: editorKind.value,
     icon: formIcon.value,
     borderColor: formBorderColor.value,
-    dueDate: editorKind.value === 'ddl' ? formDate.value : '',
+    dueDate: formDate.value,
+    time: formTime.value || (editorKind.value === 'ddl' ? '23:59' : '09:00'),
   }
 
   if (editorMode.value === 'edit' && editingTaskId.value) {
@@ -153,7 +367,7 @@ const submitEditor = () => {
       ...sharedPayload,
       notes: '',
       category: editorKind.value === 'ddl' ? 'schedule' : 'work',
-      time: editorKind.value === 'ddl' ? '23:59' : '09:00',
+      time: sharedPayload.time,
       repeatType: 'once',
       rewardType: 'mood',
       priority: 'medium',
@@ -205,13 +419,59 @@ const undoCompleteTask = (taskId: string) => {
 }
 
 onShow(() => {
+  const now = new Date()
+  calendarNow.value = now
+  calendarCursor.value = now
+  selectedCalendarDate.value = toIsoDate(now)
+  readMarkedDates()
   void syncTasksFromCloud()
+})
+
+calendarTimer = setInterval(() => {
+  calendarNow.value = new Date()
+}, 30000)
+
+onBeforeUnmount(() => {
+  if (calendarTimer) clearInterval(calendarTimer)
+  calendarTimer = undefined
 })
 </script>
 
 <template>
   <view class="planner-punch-page">
     <button class="planner-punch-create planner-punch-create--corner" @click="openCreateChoice">{{ t.planner.create }}</button>
+
+    <view class="planner-live-calendar">
+      <view class="planner-live-calendar__head">
+        <view class="planner-live-calendar__headline" @click="openYearCalendar">
+        <view class="planner-live-calendar__eyebrow">{{ isZh ? '实时日历' : 'Live calendar' }}</view>
+        <view class="planner-live-calendar__time">{{ calendarHeader }}</view>
+          <view class="planner-live-calendar__range">{{ calendarRangeLabel }}</view>
+        </view>
+        <view class="planner-live-calendar__controls">
+          <button class="planner-live-calendar__nav" :aria-label="calendarCopy.prevWeek" @click.stop="shiftCalendarWeek(-1)">‹</button>
+          <button class="planner-live-calendar__year" @click.stop="openYearCalendar">{{ calendarCopy.openYear }}</button>
+          <button class="planner-live-calendar__nav" :aria-label="calendarCopy.nextWeek" @click.stop="shiftCalendarWeek(1)">›</button>
+        </view>
+      </view>
+      <view class="planner-live-calendar__days">
+        <button
+          v-for="day in syncedCalendarDays"
+          :key="day.iso"
+          class="planner-live-calendar__day"
+          :class="{
+            'planner-live-calendar__day--active': day.active,
+            'planner-live-calendar__day--selected': day.selected,
+            'planner-live-calendar__day--marked': day.marked,
+          }"
+          @click.stop="openDateActions(day.iso)"
+        >
+          <view class="planner-live-calendar__weekday">{{ day.weekday }}</view>
+          <view class="planner-live-calendar__date">{{ day.day }}</view>
+          <view class="planner-live-calendar__count">{{ day.count }}</view>
+        </button>
+      </view>
+    </view>
 
     <view class="planner-punch-board">
       <view class="planner-punch-section planner-punch-ddl-section">
@@ -228,7 +488,7 @@ onShow(() => {
             <view class="planner-punch-ddl-item__main">
               <view>{{ task.title }}</view>
             </view>
-            <view class="planner-punch-ddl-item__date">{{ task.dueDate }}</view>
+            <view class="planner-punch-ddl-item__date">{{ task.dueDate }} {{ task.time }}</view>
           </view>
         </view>
         <view v-else class="planner-punch-ddl-empty">{{ t.planner.noDdl }}</view>
@@ -296,6 +556,68 @@ onShow(() => {
       </view>
     </view>
 
+    <view v-if="yearCalendarVisible" class="planner-year-mask" @click="closeYearCalendar">
+      <view class="planner-year-panel" @click.stop>
+        <view class="planner-year-panel__head">
+          <button class="planner-year-panel__close" @click="closeYearCalendar">×</button>
+          <button class="planner-year-panel__nav" :aria-label="calendarCopy.prevYear" @click="shiftYearCalendar(-1)">‹</button>
+          <view class="planner-year-panel__title">{{ yearCursor }}</view>
+          <button class="planner-year-panel__nav" :aria-label="calendarCopy.nextYear" @click="shiftYearCalendar(1)">›</button>
+        </view>
+        <scroll-view scroll-y class="planner-year-panel__scroll">
+          <view class="planner-year-grid">
+            <view v-for="month in yearCalendarMonths" :key="month.key" class="planner-year-month">
+              <view class="planner-year-month__title">{{ month.name }}</view>
+              <view class="planner-year-month__week">
+                <view v-for="weekday in weekHeaders" :key="`${month.key}-${weekday}`">{{ weekday }}</view>
+              </view>
+              <view class="planner-year-month__days">
+                <button
+                  v-for="(cell, cellIndex) in month.cells"
+                  :key="cell ? cell.iso : `${month.key}-blank-${cellIndex}`"
+                  class="planner-year-cell"
+                  :class="{
+                    'planner-year-cell--blank': !cell,
+                    'planner-year-cell--today': cell && cell.today,
+                    'planner-year-cell--selected': cell && cell.selected,
+                    'planner-year-cell--marked': cell && cell.marked,
+                  }"
+                  :disabled="!cell"
+                  @click.stop="cell && openDateActions(cell.iso)"
+                >
+                  <view v-if="cell" class="planner-year-cell__day">{{ cell.day }}</view>
+                  <view v-if="cell && cell.count" class="planner-year-cell__count">{{ cell.count }}</view>
+                </button>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+
+    <view v-if="dateActionVisible" class="planner-date-mask" @click="closeDateActions">
+      <view class="planner-date-card" @click.stop>
+        <button class="planner-date-card__close" @click="closeDateActions">×</button>
+        <view class="planner-date-card__title">{{ formatCalendarDateLabel(selectedCalendarDate) }}</view>
+        <view v-if="markedDateSet.has(selectedCalendarDate)" class="planner-date-card__mark">{{ calendarCopy.marked }}</view>
+        <view class="planner-date-card__actions">
+          <button class="planner-date-card__primary" @click="createCalendarTask('task')">{{ calendarCopy.createTask }}</button>
+          <button class="planner-date-card__primary planner-date-card__primary--ddl" @click="createCalendarTask('ddl')">{{ calendarCopy.createDdl }}</button>
+          <button class="planner-date-card__ghost" @click="toggleMarkedDate">
+            {{ markedDateSet.has(selectedCalendarDate) ? calendarCopy.unmark : calendarCopy.mark }}
+          </button>
+        </view>
+        <view class="planner-date-card__section">{{ calendarCopy.tasks }}</view>
+        <view v-if="selectedCalendarTasks.length" class="planner-date-card__tasks">
+          <view v-for="task in selectedCalendarTasks" :key="task.id" class="planner-date-task" @click="openEditor('edit', task.kind || 'task', task)">
+            <view class="planner-date-task__title">{{ task.title }}</view>
+            <view class="planner-date-task__meta">{{ task.time }} · {{ task.status }}</view>
+          </view>
+        </view>
+        <view v-else class="planner-date-card__empty">{{ calendarCopy.noTasks }}</view>
+      </view>
+    </view>
+
     <view v-if="editorVisible" class="planner-punch-editor-mask" @click="closeEditor">
       <view class="planner-punch-editor" @click.stop>
         <view class="planner-punch-editor__handle" />
@@ -303,9 +625,20 @@ onShow(() => {
           {{ editorMode === 'create' ? t.planner.newLabel : t.planner.editLabel }}{{ editorKind === 'ddl' ? ' DDL' : t.planner.task }}
         </view>
         <input v-model="formTitle" class="planner-punch-editor__input" :placeholder="t.planner.titlePlaceholder" />
-        <picker v-if="editorKind === 'ddl'" mode="date" :value="formDate" @change="formDate = $event.detail.value">
-          <view class="planner-punch-editor__date">{{ formDate || t.planner.chooseDate }}</view>
-        </picker>
+        <view class="planner-punch-editor__field-row">
+          <view class="planner-punch-editor__label">{{ calendarCopy.dateLabel }}</view>
+          <picker mode="date" :value="formDate || todayDate()" @change="formDate = $event.detail.value">
+            <view class="planner-punch-editor__date">{{ formDate || (editorKind === 'ddl' ? t.planner.chooseDate : calendarCopy.optionalDate) }}</view>
+          </picker>
+          <button v-if="editorKind !== 'ddl' && formDate" class="planner-punch-editor__mini" @click.stop="formDate = ''">{{ calendarCopy.clearDate }}</button>
+        </view>
+
+        <view class="planner-punch-editor__field-row">
+          <view class="planner-punch-editor__label">{{ editorKind === 'ddl' ? calendarCopy.ddlTimeLabel : calendarCopy.timeLabel }}</view>
+          <picker mode="time" :value="formTime || (editorKind === 'ddl' ? '23:59' : '09:00')" @change="formTime = $event.detail.value">
+            <view class="planner-punch-editor__date">{{ formTime || (editorKind === 'ddl' ? '23:59' : '09:00') }}</view>
+          </picker>
+        </view>
 
         <view class="planner-punch-editor__label">{{ t.planner.icon }}</view>
         <view class="planner-punch-picker-row">

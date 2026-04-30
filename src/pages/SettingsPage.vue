@@ -1,95 +1,20 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useKokoState } from '../composables/useKokoState'
 import { useLanguage } from '../composables/useLanguage'
 import { syncNativeLanguageUi } from '../utils/nativeLanguageUi'
 
 const { language, setLanguage, t } = useLanguage()
-const { pet, syncPetFromAuth, updateSettings } = useKokoState()
-const { authMode, isGuestSession, pet: authPet, syncUserProfile, logout } = useAuth()
+const { updateSettings } = useKokoState()
+const { authMode, logout } = useAuth()
 
-const petNameInput = ref(pet.value.name)
-const renaming = ref(false)
-
-const renameHint = computed(() =>
-  isGuestSession.value
-    ? t.value.settings.guestRenameHint
-    : t.value.settings.renameHint,
-)
-
-watch(
-  () => authPet.value?.name,
-  (name) => {
-    if (name) {
-      petNameInput.value = name
-    }
-  },
-  { immediate: true },
-)
+const scrollTarget = ref('')
 
 const changeLanguage = (next: 'zh' | 'en') => {
   setLanguage(next)
   updateSettings({ language: next })
   syncNativeLanguageUi(next)
-}
-
-const renamePet = async () => {
-  if (isGuestSession.value) {
-    uni.showToast({
-      title: t.value.settings.guestNameFixed,
-      icon: 'none',
-    })
-    return
-  }
-
-  const nextName = petNameInput.value.trim()
-
-  if (!nextName) {
-    uni.showToast({
-      title: t.value.settings.emptyPetName,
-      icon: 'none',
-    })
-    return
-  }
-
-  if (nextName.length > 12) {
-    uni.showToast({
-      title: t.value.settings.petNameTooLong,
-      icon: 'none',
-    })
-    return
-  }
-
-  if (nextName === authPet.value?.name) {
-    uni.showToast({
-      title: t.value.settings.nameUnchanged,
-      icon: 'none',
-    })
-    return
-  }
-
-  renaming.value = true
-
-  try {
-    await syncUserProfile({
-      petName: nextName,
-    })
-
-    syncPetFromAuth({
-      ...(authPet.value ?? {}),
-      name: nextName,
-    })
-
-    petNameInput.value = nextName
-
-    uni.showToast({
-      title: t.value.settings.nameUpdated,
-      icon: 'success',
-    })
-  } finally {
-    renaming.value = false
-  }
 }
 
 const confirmLogout = () =>
@@ -124,7 +49,12 @@ const handleLogout = async () => {
 </script>
 
 <template>
-  <view class="settings-page">
+  <scroll-view
+    class="settings-page"
+    scroll-y
+    :scroll-into-view="scrollTarget"
+    scroll-with-animation
+  >
     <view class="settings-panel">
       <view class="settings-title">{{ t.settings.title }}</view>
       <view class="settings-subtitle">{{ t.settings.subtitle }}</view>
@@ -150,21 +80,6 @@ const handleLogout = async () => {
       </view>
 
       <view class="settings-block">
-        <view class="settings-block__label">{{ t.settings.petNameLabel }}</view>
-        <input
-          class="settings-input"
-          maxlength="12"
-          :value="petNameInput"
-          :placeholder="t.settings.petNamePlaceholder"
-          @input="(event) => (petNameInput = event.detail?.value ?? '')"
-        />
-        <view class="settings-block__hint">{{ renameHint }}</view>
-        <button class="settings-button" :disabled="renaming" @click="renamePet">
-          {{ renaming ? t.settings.saving : t.settings.savePetName }}
-        </button>
-      </view>
-
-      <view class="settings-block">
         <view class="settings-block__label">{{ t.settings.logoutLabel }}</view>
         <view class="settings-block__hint">
           {{ t.settings.logoutHint.replace('{mode}', authMode || t.settings.notLoggedIn) }}
@@ -172,12 +87,14 @@ const handleLogout = async () => {
         <button class="settings-button settings-button--danger" @click="handleLogout">{{ t.settings.logoutLabel }}</button>
       </view>
     </view>
-  </view>
+  </scroll-view>
 </template>
 
 <style scoped>
 .settings-page {
-  padding: 28rpx;
+  box-sizing: border-box;
+  height: 100vh;
+  padding: 28rpx 28rpx calc(56rpx + env(safe-area-inset-bottom));
 }
 
 .settings-panel {
@@ -252,9 +169,13 @@ const handleLogout = async () => {
   background: #fff;
   border: 2rpx solid rgba(176, 143, 102, 0.18);
   border-radius: 18rpx;
+  box-sizing: border-box;
   color: #253047;
   font-size: 28rpx;
-  padding: 14rpx 16rpx;
+  height: 78rpx;
+  line-height: 78rpx;
+  min-height: 78rpx;
+  padding: 0 18rpx;
 }
 
 .settings-button {
@@ -263,9 +184,10 @@ const handleLogout = async () => {
   color: #173f38;
   font-size: 28rpx;
   font-weight: 800;
-  line-height: 1;
+  height: 84rpx;
+  line-height: 84rpx;
   margin: 0;
-  padding: 20rpx;
+  padding: 0;
 }
 
 .settings-button::after {

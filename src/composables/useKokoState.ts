@@ -5,6 +5,7 @@ import type {
   CareActionKey,
   CareActionResult,
   ChatMessage,
+  CoinLog,
   CompanionEconomy,
   CourseSchedule,
   DailySnapshot,
@@ -12,6 +13,7 @@ import type {
   EconomyRewardSource,
   EmotionTag,
   FacingDirection,
+  HardwareInputEvent,
   MiniGameResult,
   Pet,
   PetArchive,
@@ -54,6 +56,7 @@ import {
 } from '../services/companionCloud'
 import { useAuth } from './useAuth'
 import { copy } from '../i18n'
+import { miniGameDefinitions } from '../config/miniGames'
 
 const STORAGE_KEY = 'koko-box-mini-state-v1'
 const CHAT_SESSION_ID = 'main-session'
@@ -273,6 +276,7 @@ const defaultEconomy = (coins = 0): CompanionEconomy => ({
   inventory: {},
   purchaseHistory: [],
   rewardLedger: {},
+  coinLogs: [],
   dailyChatRewards: {},
   starterResourcesGranted: false,
   updatedAt: nowIso(),
@@ -348,6 +352,8 @@ const cloudCourseScheduleHydrating = ref(false)
 const cloudEconomyHydrated = ref(false)
 const cloudEconomyHydrating = ref(false)
 
+const shouldUseCloudSync = () => authMode.value === 'wechat' && !isMockSession.value
+
 const deriveStage = (value: number): PetStage => {
   if (value >= 85) return 'adult'
   if (value >= 55) return 'growing'
@@ -418,14 +424,190 @@ const syncMetricsCoins = () => {
 }
 
 const setEconomy = (nextEconomy: Partial<CompanionEconomy> | CompanionEconomy) => {
-  economy.value = normalizeCompanionEconomy(
+  const previousEconomy = economy.value
+  const previousCoinTotal = coinLogTotal(previousEconomy.coinLogs ?? [])
+  const normalizedEconomy = normalizeCompanionEconomy(
     {
-      ...economy.value,
+      ...previousEconomy,
       ...nextEconomy,
     },
     metrics.value.coins,
   )
+  const coinDelta = Math.round(normalizedEconomy.coins) - Math.round(previousEconomy.coins)
+
+  if (coinDelta) {
+    const loggedDelta = coinLogTotal(normalizedEconomy.coinLogs ?? []) - previousCoinTotal
+    const missingDelta = coinDelta - loggedDelta
+
+    if (missingDelta) {
+      const createdAt = nowIso()
+      const coinLog: CoinLog = {
+        id: createId('coin'),
+        type: missingDelta > 0 ? 'gain' : 'consume',
+        amount: missingDelta,
+        reason: inferCoinReconciliationReason(missingDelta),
+        created_at: createdAt,
+      }
+
+      normalizedEconomy.coinLogs = mergeCoinLogs([coinLog], normalizedEconomy.coinLogs ?? [])
+      normalizedEconomy.updatedAt = createdAt
+    }
+  }
+
+  economy.value = normalizedEconomy
   syncMetricsCoins()
+}
+
+const mergeCoinLogs = (...logGroups: CoinLog[][]) => {
+  const seen = new Set<string>()
+
+  return logGroups
+    .flat()
+    .filter((item) => {
+      const key = item.id || `${item.created_at}:${item.type}:${item.amount}:${item.reason}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+    .slice(0, 300)
+}
+
+const coinLogTotal = (logs: CoinLog[]) =>
+  logs.reduce((total, item) => total + Math.round(item.amount || 0), 0)
+
+const inferCoinReconciliationReason = (amount: number) => {
+  const isZh = settings.value.language === 'zh'
+  const latestEvent = syncEvents.value.find((item) => {
+    const timestamp = new Date(item.timestamp).getTime()
+    return timestamp && Date.now() - timestamp < 10 * 60 * 1000
+  })
+  const actionType = latestEvent?.actionType ?? ''
+
+  if (amount > 0 && actionType.startsWith('mini-game-')) {
+    const gameType = actionType.replace('mini-game-', '') as MiniGameResult['gameType']
+    const definition = miniGameDefinitions[gameType]
+    const gameTitle = definition ? (isZh ? definition.title.zh : definition.title.en) : ''
+    return gameTitle
+      ? (isZh ? `游戏奖励补记：${gameTitle}` : `Game reward reconciled: ${gameTitle}`)
+      : (isZh ? '游戏奖励补记' : 'Game reward reconciled')
+  }
+  if (amount > 0 && actionType === 'task-complete') {
+    return isZh ? '任务完成补记' : 'Task reward reconciled'
+  }
+  if (amount > 0 && actionType === 'chat-summary') {
+    return isZh ? '聊天奖励补记' : 'Chat reward reconciled'
+  }
+  if (amount < 0 && actionType === 'shop-purchase') {
+    return isZh ? '小镇商店消费补记' : 'Town shop spend reconciled'
+  }
+
+  return isZh ? '金豆余额同步补记' : 'Coin balance reconciled'
+}
+
+const ensureCoinLogBackfill = (options: { persist?: boolean } = {}) => {
+  const currentCoins = Math.round(economy.value.coins)
+  if (currentCoins <= 0 || (economy.value.coinLogs ?? []).length > 0) {
+    return false
+  }
+
+  const createdAt = economy.value.updatedAt || nowIso()
+  const reason = settings.value.language === 'zh'
+    ? '\u5386\u53f2\u91d1\u8c46\u4f59\u989d\u540c\u6b65'
+    : 'Existing coin balance synced'
+
+  const coinLog: CoinLog = {
+    id: createId('coin'),
+    type: 'gain',
+    amount: currentCoins,
+    reason,
+    created_at: createdAt,
+  }
+
+  setEconomy({
+    ...economy.value,
+    coinLogs: [coinLog],
+    updatedAt: createdAt,
+  })
+
+  if (options.persist) {
+    persistEconomy()
+  }
+
+  return true
+}
+
+const ensureCoinLogIntegrity = (options: { persist?: boolean } = {}) => {
+  const currentCoins = Math.round(economy.value.coins)
+  const logs = economy.value.coinLogs ?? []
+
+  if (ensureCoinLogBackfill(options)) {
+    return true
+  }
+
+  const diff = currentCoins - coinLogTotal(logs)
+  if (!diff) {
+    return false
+  }
+
+  const createdAt = nowIso()
+  const coinLog: CoinLog = {
+    id: createId('coin'),
+    type: diff > 0 ? 'gain' : 'consume',
+    amount: diff,
+    reason: inferCoinReconciliationReason(diff),
+    created_at: createdAt,
+  }
+
+  setEconomy({
+    ...economy.value,
+    coinLogs: [coinLog, ...logs].slice(0, 300),
+    updatedAt: createdAt,
+  })
+
+  if (options.persist) {
+    persistEconomy()
+  }
+
+  return true
+}
+
+const addCoinLog = (reason: string, amount: number) => {
+  hydrateState()
+  ensureCoinLogIntegrity()
+  const delta = Math.round(amount)
+  const nextCoins = Math.max(0, Math.min(999999, economy.value.coins + delta))
+  const appliedAmount = nextCoins - economy.value.coins
+
+  if (!appliedAmount) {
+    return {
+      logged: false,
+      amount: 0,
+      coins: economy.value.coins,
+    }
+  }
+
+  const coinLog: CoinLog = {
+    id: createId('coin'),
+    type: appliedAmount > 0 ? 'gain' : 'consume',
+    amount: appliedAmount,
+    reason: reason.trim() || (appliedAmount > 0 ? 'Reward' : 'Consume'),
+    created_at: nowIso(),
+  }
+
+  setEconomy({
+    ...economy.value,
+    coins: nextCoins,
+    coinLogs: [coinLog, ...(economy.value.coinLogs ?? [])].slice(0, 300),
+    updatedAt: coinLog.created_at,
+  })
+  persistEconomy()
+
+  return {
+    logged: true,
+    amount: Math.abs(appliedAmount),
+    coins: economy.value.coins,
+  }
 }
 
 const grantStarterResourcesIfNeeded = () => {
@@ -488,9 +670,10 @@ const applySnapshot = (snapshot?: Partial<PersistedState>) => {
   archive.value = snapshot?.archive ?? defaultArchive()
   snapshots.value = snapshot?.snapshots ?? defaultSnapshots()
   metrics.value = snapshot?.metrics ?? defaultMetrics()
-  economy.value = normalizeCompanionEconomy(snapshot?.economy ?? defaultEconomy(), 0)
+  economy.value = normalizeCompanionEconomy(snapshot?.economy ?? defaultEconomy(metrics.value.coins), metrics.value.coins)
   syncMetricsCoins()
   grantStarterResourcesIfNeeded()
+  ensureCoinLogIntegrity()
   petPersonaPrompt.value =
     snapshot?.petPersonaPromptVersion === PET_PERSONA_PROMPT_VERSION && snapshot?.petPersonaPrompt?.trim()
       ? snapshot.petPersonaPrompt.trim()
@@ -513,6 +696,7 @@ const hydrateState = () => {
   }
 
   grantStarterResourcesIfNeeded()
+  ensureCoinLogIntegrity()
   hydrated.value = true
   persistState()
 }
@@ -643,11 +827,15 @@ const persistEconomyToCloud = async () => {
     })
 
     if (saved && saved.updatedAt >= updatedAt) {
+      const mergedCoinLogs = mergeCoinLogs(saved.economy.coinLogs ?? [], economy.value.coinLogs ?? [])
       pet.value = sanitizePet({
         ...pet.value,
         ...(saved.pet ?? {}),
       })
-      setEconomy(saved.economy)
+      setEconomy({
+        ...saved.economy,
+        coinLogs: mergedCoinLogs,
+      })
       persistState()
     }
   } catch (caughtError) {
@@ -677,7 +865,7 @@ const hydrateEconomyFromCloud = async () => {
 
   hydrateState()
 
-  if (authMode.value !== 'wechat' || isMockSession.value) {
+  if (!shouldUseCloudSync()) {
     return
   }
 
@@ -688,24 +876,39 @@ const hydrateEconomyFromCloud = async () => {
     const cloudUpdatedAt = new Date(cloudSnapshot?.updatedAt || 0).getTime() || 0
     const localUpdatedAt = new Date(economy.value.updatedAt || 0).getTime() || 0
 
-    if (cloudSnapshot?.exists || (cloudSnapshot && cloudUpdatedAt >= localUpdatedAt)) {
+    if (cloudSnapshot?.exists && cloudUpdatedAt >= localUpdatedAt) {
+      const mergedCoinLogs = mergeCoinLogs(cloudSnapshot.economy.coinLogs ?? [], economy.value.coinLogs ?? [])
       if (cloudSnapshot.pet) {
         pet.value = sanitizePet({
           ...pet.value,
           ...cloudSnapshot.pet,
         })
       }
-      setEconomy(cloudSnapshot.economy)
+      setEconomy({
+        ...cloudSnapshot.economy,
+        coinLogs: mergedCoinLogs,
+      })
       const grantedStarterResources = grantStarterResourcesIfNeeded()
+      const backfilledCoinLog = ensureCoinLogIntegrity()
       logSyncEvent(settings.value.language === 'zh' ? '已从云端加载金币、库存和宠物状态。' : 'Coins, inventory, and pet state loaded from cloud.', {
         target: 'miniapp',
         actionType: 'companion-cloud-load',
       })
       persistState()
-      if (grantedStarterResources) {
+      if (grantedStarterResources || backfilledCoinLog) {
         await persistEconomyToCloud()
       }
     } else {
+      if (cloudSnapshot?.exists) {
+        const mergedCoinLogs = mergeCoinLogs(economy.value.coinLogs ?? [], cloudSnapshot.economy.coinLogs ?? [])
+        if (mergedCoinLogs.length !== (economy.value.coinLogs ?? []).length) {
+          setEconomy({
+            ...economy.value,
+            coinLogs: mergedCoinLogs,
+          })
+          persistState()
+        }
+      }
       await persistEconomyToCloud()
     }
 
@@ -723,11 +926,24 @@ const hydrateEconomyFromCloud = async () => {
   }
 }
 
+const coinLogReason = (source: EconomyRewardSource, detail?: string) => {
+  const isZh = settings.value.language === 'zh'
+  const reasonMap: Record<EconomyRewardSource, string> = {
+    task: isZh ? '任务完成' : 'Task completed',
+    chat: isZh ? '聊天奖励' : 'Chat reward',
+    'mini-game': isZh ? '游戏奖励' : 'Game reward',
+    system: isZh ? '系统奖励' : 'System reward',
+  }
+  const suffix = detail?.trim()
+  return suffix ? `${reasonMap[source]}：${suffix}` : reasonMap[source]
+}
+
 const awardCoins = (
   source: EconomyRewardSource,
   amount: number,
   ledgerKey: string,
   petImpact?: Parameters<typeof applyPetImpactDelta>[0],
+  reasonDetail?: string,
 ) => {
   hydrateState()
   const safeAmount = Math.max(0, Math.round(amount))
@@ -740,9 +956,10 @@ const awardCoins = (
     }
   }
 
+  const coinResult = addCoinLog(coinLogReason(source, reasonDetail), safeAmount)
+
   setEconomy({
     ...economy.value,
-    coins: economy.value.coins + safeAmount,
     rewardLedger: {
       ...economy.value.rewardLedger,
       [ledgerKey]: {
@@ -761,8 +978,8 @@ const awardCoins = (
   persistEconomy()
 
   return {
-    awarded: true,
-    amount: safeAmount,
+    awarded: coinResult.logged,
+    amount: coinResult.amount,
     coins: economy.value.coins,
   }
 }
@@ -778,6 +995,62 @@ const rewardTask = (rewardType: RewardType) => {
 const setActiveMiniGame = (gameType: Pet['activeMiniGame']) => {
   hydrateState()
   updatePet({ activeMiniGame: gameType })
+}
+
+const triggerHardwareAction = (type: string, payload: Record<string, unknown> = {}) => {
+  hydrateState()
+  const m5Device = devices.value.find((item) => item.deviceType === 'm5')
+  const status: SyncStatus = m5Device?.online ? 'success' : 'retrying'
+  const gameType = typeof payload.game_id === 'string' ? payload.game_id : pet.value.activeMiniGame
+  const createdAt = nowIso()
+
+  logSyncEvent(
+    settings.value.language === 'zh'
+      ? `已预留硬件动作：${type}${gameType ? ` / ${gameType}` : ''}。`
+      : `Hardware action reserved: ${type}${gameType ? ` / ${gameType}` : ''}.`,
+    {
+      source: 'miniapp',
+      target: 'm5',
+      actionType: `hardware:${type}`,
+      status,
+    },
+  )
+  persistState()
+
+  return {
+    type,
+    payload,
+    accepted: true,
+    status,
+    createdAt,
+  }
+}
+
+const receiveHardwareInput = (event: HardwareInputEvent | string) => {
+  hydrateState()
+  const normalized: HardwareInputEvent =
+    typeof event === 'string'
+      ? { type: event, receivedAt: nowIso() }
+      : { ...event, receivedAt: event.receivedAt ?? nowIso() }
+
+  if (normalized.gameType) {
+    updatePet({ activeMiniGame: normalized.gameType })
+  }
+
+  logSyncEvent(
+    settings.value.language === 'zh'
+      ? `收到硬件输入：${normalized.type}${normalized.gameType ? ` / ${normalized.gameType}` : ''}。`
+      : `Hardware input received: ${normalized.type}${normalized.gameType ? ` / ${normalized.gameType}` : ''}.`,
+    {
+      source: 'm5',
+      target: 'miniapp',
+      actionType: `hardware-input:${normalized.type}`,
+      status: 'success',
+    },
+  )
+  persistState()
+
+  return normalized
 }
 
 const setPetRotationFrame = (frame: number) => {
@@ -897,21 +1170,25 @@ const careResourceMeta = (isZh: boolean): Record<'feedMeal' | 'feedWater' | 'cle
   key: string
   name: string
   effect: string
+  coinCost: number
 }> => ({
   feedMeal: {
     key: 'meal',
     name: isZh ? '主食' : 'Meal',
     effect: isZh ? '提升饱腹、心情和少量精力。' : 'Improves hunger, mood, and a little energy.',
+    coinCost: 3,
   },
   feedWater: {
     key: 'water',
     name: isZh ? '水' : 'Water',
     effect: isZh ? '补充水分，提升清洁、心情和精力。' : 'Hydrates Koko and improves clean, mood, and energy.',
+    coinCost: 1,
   },
   clean: {
     key: 'clean-kit',
     name: isZh ? '清洁用品' : 'Clean Kit',
     effect: isZh ? '提升清洁、健康和心情。' : 'Improves clean, health, and mood.',
+    coinCost: 2,
   },
 })
 
@@ -958,6 +1235,14 @@ const useCareResource = (action: CareActionKey): CareActionResult & { resourceCo
     }
   }
 
+  const result = carePet(action)
+  if (!result.success) {
+    return {
+      ...result,
+      resourceCount: resource.count,
+    }
+  }
+
   setEconomy({
     ...economy.value,
     inventory: {
@@ -965,22 +1250,14 @@ const useCareResource = (action: CareActionKey): CareActionResult & { resourceCo
       [resource.key]: resource.count - 1,
     },
   })
-  persistEconomy()
 
-  const result = carePet(action)
-  if (!result.success) {
-    setEconomy({
-      ...economy.value,
-      inventory: {
-        ...economy.value.inventory,
-        [resource.key]: resource.count,
-      },
-    })
+  if (resource.coinCost > 0) {
+    addCoinLog(
+      isZh ? `首页照料消耗：${resource.name}` : `Home care used: ${resource.name}`,
+      -resource.coinCost,
+    )
+  } else {
     persistEconomy()
-    return {
-      ...result,
-      resourceCount: resource.count,
-    }
   }
 
   void persistEconomyToCloud()
@@ -1114,9 +1391,10 @@ const purchaseShopItem = (itemId: ShopItemId) => {
     }
   }
 
+  addCoinLog(isZh ? `小镇商店消费：${itemName}` : `Town shop purchase: ${itemName}`, -item.price)
+
   setEconomy({
     ...economy.value,
-    coins: economy.value.coins - item.price,
     inventory: {
       ...economy.value.inventory,
       [item.resourceKey]: (economy.value.inventory[item.resourceKey] ?? 0) + 1,
@@ -1149,9 +1427,12 @@ const purchaseShopItem = (itemId: ShopItemId) => {
 const applyMiniGameReward = (result: MiniGameResult) => {
   hydrateState()
 
-  const baseMood = result.gameType === 'catch' ? 6 : 8
-  const baseIntimacy = result.gameType === 'catch' ? 4 : 5
-  const scoreScale = Math.min(12, Math.floor(result.score / 2))
+  const gameDefinition = miniGameDefinitions[result.gameType] ?? miniGameDefinitions.catch
+  const rewardConfig = gameDefinition.reward_config
+  const safeScore = Math.max(0, Math.round(result.score))
+  const scoreMoodBonus = Math.min(rewardConfig.maxBonusMood, Math.floor(safeScore / rewardConfig.scoreMoodStep))
+  const scoreIntimacyBonus = Math.min(rewardConfig.maxBonusIntimacy, Math.floor(safeScore / rewardConfig.scoreIntimacyStep))
+  const scoreCoinBonus = Math.min(rewardConfig.maxBonusCoins, Math.floor(safeScore / rewardConfig.scoreCoinStep))
 
   metrics.value = {
     ...metrics.value,
@@ -1160,24 +1441,27 @@ const applyMiniGameReward = (result: MiniGameResult) => {
   }
   awardCoins(
     'mini-game',
-    Math.min(12, Math.max(3, Math.floor(result.score / 3))),
-    `mini-game:${result.gameType}:${Date.now()}:${Math.round(result.score)}`,
+    Math.max(1, rewardConfig.coins + scoreCoinBonus + (result.bonusCoins ?? 0)),
+    `mini-game:${result.gameType}:${Date.now()}:${safeScore}`,
+    undefined,
+    settings.value.language === 'zh' ? gameDefinition.title.zh : gameDefinition.title.en,
   )
 
   updatePet({
-    mood: pet.value.mood + baseMood + scoreScale + (result.bonusMood ?? 0),
-    intimacy: pet.value.intimacy + baseIntimacy + Math.min(8, Math.floor(result.score / 4)) + (result.bonusIntimacy ?? 0),
-    energy: pet.value.energy - Math.min(6, Math.floor(result.score / 6)) + (result.bonusEnergy ?? 0),
-    clean: pet.value.clean + (result.bonusClean ?? 0),
+    mood: pet.value.mood + rewardConfig.mood + scoreMoodBonus + (result.bonusMood ?? 0),
+    intimacy: pet.value.intimacy + rewardConfig.intimacy + scoreIntimacyBonus + (result.bonusIntimacy ?? 0),
+    energy: pet.value.energy + (rewardConfig.energy ?? 0) + (result.bonusEnergy ?? 0),
+    clean: pet.value.clean + (rewardConfig.clean ?? 0) + (result.bonusClean ?? 0),
     activeMiniGame: result.gameType,
   })
   void persistEconomyToCloud()
 
-  logSyncEvent(settings.value.language === 'zh' ? '小游戏 ' + result.gameType + ' 完成，得到 ' + result.score + ' 分。' : 'Mini game ' + result.gameType + ' completed with score ' + result.score + '.', {
+  logSyncEvent(settings.value.language === 'zh' ? '小游戏 ' + gameDefinition.title.zh + ' 完成，得到 ' + safeScore + ' 分。' : 'Mini game ' + gameDefinition.title.en + ' completed with score ' + safeScore + '.', {
     target: 'desktop',
     actionType: `mini-game-${result.gameType}`,
     status: 'success',
   })
+  ensureCoinLogIntegrity({ persist: true })
   persistState()
 }
 
@@ -1213,6 +1497,7 @@ const setTaskStatus = (taskId: string, nextStatus: TaskStatus) => {
         mood: 6,
         intimacy: 2,
       },
+      targetTask.title,
     )
     logSyncEvent(settings.value.language === 'zh' ? '任务「' + targetTask.title + '」已完成，奖励已发放。' : 'Task "' + targetTask.title + '" completed. Reward delivered.', {
       target: 'm5',
@@ -1324,6 +1609,10 @@ const hydrateCloudChatHistory = async () => {
     return
   }
 
+  if (!shouldUseCloudSync()) {
+    return
+  }
+
   cloudHistoryHydrating.value = true
 
   try {
@@ -1348,7 +1637,7 @@ const hydrateCloudTasks = async () => {
 
   hydrateState()
 
-  if (authMode.value !== 'wechat' || isMockSession.value) {
+  if (!shouldUseCloudSync()) {
     return
   }
 
@@ -1392,6 +1681,10 @@ const hydrateCloudCourseSchedule = async () => {
     return
   }
 
+  if (!shouldUseCloudSync()) {
+    return
+  }
+
   cloudCourseScheduleHydrating.value = true
 
   try {
@@ -1430,16 +1723,25 @@ const hydrateCloudCourseSchedule = async () => {
 
 const syncCourseScheduleFromCloud = async () => {
   cloudCourseScheduleHydrated.value = false
+  if (!shouldUseCloudSync()) {
+    return
+  }
   await hydrateCloudCourseSchedule()
 }
 
 const syncTasksFromCloud = async () => {
   cloudTasksHydrated.value = false
+  if (!shouldUseCloudSync()) {
+    return
+  }
   await hydrateCloudTasks()
 }
 
 const syncEconomyFromCloud = async () => {
   cloudEconomyHydrated.value = false
+  if (!shouldUseCloudSync()) {
+    return
+  }
   await hydrateEconomyFromCloud()
 }
 
@@ -1872,10 +2174,12 @@ const overviewStats = computed(() => [
 ])
 
 hydrateState()
-void hydrateCloudChatHistory()
-void hydrateCloudTasks()
-void hydrateCloudCourseSchedule()
-void hydrateEconomyFromCloud()
+if (shouldUseCloudSync()) {
+  void hydrateCloudChatHistory()
+  void hydrateCloudTasks()
+  void hydrateCloudCourseSchedule()
+  void hydrateEconomyFromCloud()
+}
 
 watch(
   () => [authMode.value, isMockSession.value] as const,
@@ -1928,6 +2232,9 @@ export const useKokoState = () => ({
   hydrateEconomyFromCloud,
   persistEconomyToCloud,
   awardCoins,
+  addCoinLog,
+  ensureCoinLogBackfill,
+  ensureCoinLogIntegrity,
   purchaseShopItem,
   calculateTaskCoinReward,
   completeTaskWithReward: (taskId: string) => setTaskStatus(taskId, 'completed'),
@@ -1940,8 +2247,11 @@ export const useKokoState = () => ({
   setPetPersonaPrompt,
   runDemoScenario,
   syncPetFromAuth,
+  updatePet,
   getDigestStatus,
   setActiveMiniGame,
+  triggerHardwareAction,
+  receiveHardwareInput,
   setPetRotationFrame,
   petRotationFrames: PET_ROTATION_FRAMES,
   feedDigestMs: FEED_DIGEST_MS,

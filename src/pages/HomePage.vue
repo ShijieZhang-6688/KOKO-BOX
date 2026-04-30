@@ -5,7 +5,10 @@ import PetLottieAvatar from '../components/PetLottieAvatar.vue'
 import PetMiniGameDrawer from '../components/PetMiniGameDrawer.vue'
 import { useKokoState } from '../composables/useKokoState'
 import { useLanguage } from '../composables/useLanguage'
-import type { MiniGameResult, PetActionType } from '../types/koko'
+import { miniGameDefinitions } from '../config/miniGames'
+import type { MiniGameResult, MiniGameType, PetActionType } from '../types/koko'
+
+type HomeStatKey = 'mood' | 'energy' | 'bond'
 
 const FRAME_COUNT = 16
 const STEP_PX = 18
@@ -77,6 +80,7 @@ const {
   sendChatMessage,
   settings,
   setPetRotationFrame,
+  ensureCoinLogIntegrity,
 } = useKokoState()
 
 const petAction = ref<PetActionType>('idle')
@@ -88,7 +92,8 @@ const sending = ref(false)
 const gameDrawerOpen = ref(false)
 const careResourcePanelOpen = ref(false)
 const activeCareResourceAction = ref<'feedMeal' | 'feedWater' | 'clean' | null>(null)
-const activeGame = ref<'catch' | 'bubble'>('catch')
+const activeGame = ref<MiniGameType>('catch')
+const activeStatKey = ref<HomeStatKey | null>(null)
 const nowMs = ref(Date.now())
 const rotationFrame = ref(pet.value.rotationFrame ?? 0)
 const dragging = ref(false)
@@ -103,11 +108,71 @@ let carryDistance = 0
 
 const digestStatus = computed(() => getDigestStatus(pet.value, nowMs.value))
 
-const compactStats = computed(() => [
-  { label: t.value.home.stats.mood, value: pet.value.mood, tint: 'sun' },
-  { label: t.value.home.stats.energy, value: pet.value.energy, tint: 'leaf' },
-  { label: t.value.home.stats.bond, value: pet.value.intimacy, tint: 'sky' },
-])
+const statLevelLabel = (value: number, isZh: boolean) => {
+  if (value >= 75) return isZh ? '状态很好' : 'Strong'
+  if (value >= 45) return isZh ? '稳定维持' : 'Steady'
+  return isZh ? '需要关注' : 'Needs care'
+}
+
+const statDetails = computed<Record<HomeStatKey, {
+  key: HomeStatKey
+  label: string
+  value: number
+  tint: 'sun' | 'leaf' | 'sky'
+  level: string
+  message: string
+  suggestion: string
+}>>(() => {
+  const isZh = settings.value.language === 'zh'
+  const mood = pet.value.mood
+  const energy = pet.value.energy
+  const bond = pet.value.intimacy
+
+  return {
+    mood: {
+      key: 'mood',
+      label: t.value.home.stats.mood,
+      value: mood,
+      tint: 'sun',
+      level: statLevelLabel(mood, isZh),
+      message: mood >= 75
+        ? (isZh ? 'Koko 今天很放松，适合安排一点轻松互动。' : 'Koko feels relaxed today and is ready for gentle play.')
+        : mood >= 45
+          ? (isZh ? '情绪整体稳定，完成一个小任务会更有成就感。' : 'Mood is steady. A small completed task can lift it further.')
+          : (isZh ? 'Koko 有点低落，建议先聊天、喂水或玩一个短游戏。' : 'Koko feels low. Try chatting, water, or a short game first.'),
+      suggestion: isZh ? '建议：陪伴 3 分钟，或完成一个今日待办。' : 'Tip: spend 3 minutes together or complete one plan.',
+    },
+    energy: {
+      key: 'energy',
+      label: t.value.home.stats.energy,
+      value: energy,
+      tint: 'leaf',
+      level: statLevelLabel(energy, isZh),
+      message: energy >= 75
+        ? (isZh ? '精力充足，可以进入接球、跳绳这类稍活跃的游戏。' : 'Energy is high. Catch or jump-rope games are a good fit.')
+        : energy >= 45
+          ? (isZh ? '精力够用，适合轻量互动，不建议连续高强度玩耍。' : 'Energy is usable. Keep interactions light and paced.')
+          : (isZh ? 'Koko 有点累，先休息、补水或做安静陪伴更合适。' : 'Koko is tired. Rest, water, or quiet company is better now.'),
+      suggestion: isZh ? '建议：玩耍后观察精力变化，低于 40 时减少连续游戏。' : 'Tip: watch energy after play; avoid back-to-back games under 40.',
+    },
+    bond: {
+      key: 'bond',
+      label: t.value.home.stats.bond,
+      value: bond,
+      tint: 'sky',
+      level: statLevelLabel(bond, isZh),
+      message: bond >= 75
+        ? (isZh ? '你们已经很熟悉了，Koko 会更积极回应互动。' : 'Your bond is close, so Koko responds more warmly.')
+        : bond >= 45
+          ? (isZh ? '亲密度正在升温，稳定完成任务和小游戏会继续提升。' : 'Bond is warming up. Tasks and mini games will keep building it.')
+          : (isZh ? '亲密度还在建立中，多点触摸、聊天和游戏会更快靠近。' : 'Bond is still forming. Taps, chats, and games help it grow.'),
+      suggestion: isZh ? '建议：每天至少一次聊天或小游戏，让关系曲线持续上升。' : 'Tip: one chat or mini game daily keeps the relationship growing.',
+    },
+  }
+})
+
+const compactStats = computed(() => [statDetails.value.mood, statDetails.value.energy, statDetails.value.bond])
+const activeStatDetail = computed(() => (activeStatKey.value ? statDetails.value[activeStatKey.value] : null))
 
 const lastAssistantMessage = computed(() => {
   const assistant = [...messages.value].reverse().find((item) => item.role === 'assistant')
@@ -132,6 +197,7 @@ const careResourcePanelCopy = computed(() => {
     available: isZh ? '可用数量' : 'Available',
     use: isZh ? '使用' : 'Use',
     cancel: isZh ? '取消' : 'Cancel',
+    coinCost: isZh ? '金豆消耗' : 'Coin cost',
     empty: isZh ? '库存不足，请前往小镇商店兑换。' : 'Out of stock. Redeem more in the town shop.',
     digesting: isZh ? 'Koko 还在消化，稍后再喂食。' : 'Koko is still digesting. Feed later.',
   }
@@ -148,13 +214,9 @@ const careActions: Array<{
   { key: 'clean', label: '', action: 'stretch' },
 ]
 
-const actionDisplayLabel = (action: (typeof careActions)[number]) =>
-  action.key === 'feedMeal' && digestStatus.value.isDigesting
-    ? digestStatus.value.digestCountdownLabel
-    : t.value.home.care[action.key]
+const actionDisplayLabel = (action: (typeof careActions)[number]) => t.value.home.care[action.key]
 
-const careActionDisabled = (action: (typeof careActions)[number]) =>
-  action.key !== 'play' && !canUseCareAction(action.key)
+const careActionDisabled = (_action: (typeof careActions)[number]) => false
 
 const clearTimers = () => {
   if (tapTimer) clearTimeout(tapTimer)
@@ -261,11 +323,23 @@ const endPetDrag = () => {
   handleRotateEnd(rotationFrame.value)
 }
 
+const carePreviewMessage = (key: (typeof careActions)[number]['key']) => {
+  const isZh = settings.value.language === 'zh'
+  const copy: Record<(typeof careActions)[number]['key'], string> = {
+    feedMeal: isZh ? 'Koko 闻到饭香，已经凑过来了。' : 'Koko smells the meal and steps closer.',
+    feedWater: isZh ? 'Koko 低头等着喝水，耳朵轻轻动了一下。' : 'Koko leans in for water and flicks its ears.',
+    play: isZh ? '游戏面板打开啦，Koko 准备进场。' : 'The game panel is open. Koko is ready to join.',
+    clean: isZh ? 'Koko 伸了伸爪子，准备清洁。' : 'Koko stretches its paws and gets ready to clean.',
+  }
+  return copy[key]
+}
+
 const performCare = (action: (typeof careActions)[number]) => {
+  triggerPetAction(action.action, carePreviewMessage(action.key), 1400)
+
   if (action.key === 'play') {
     activeGame.value = 'catch'
     gameDrawerOpen.value = true
-    triggerPetAction(action.action, t.value.home.gameReady, 2200)
     return
   }
 
@@ -323,6 +397,19 @@ const openChatPage = () => {
   uni.navigateTo({ url: '/pages/chat/index' })
 }
 
+const openCoinLog = () => {
+  ensureCoinLogIntegrity({ persist: true })
+  uni.navigateTo({ url: '/pages/coin-log/index' })
+}
+
+const openStatDetail = (key: HomeStatKey) => {
+  activeStatKey.value = key
+}
+
+const closeStatDetail = () => {
+  activeStatKey.value = null
+}
+
 const openPlayFromTown = () => {
   activeGame.value = 'catch'
   gameDrawerOpen.value = true
@@ -341,10 +428,10 @@ const handlePendingTownAction = () => {
 }
 
 const handleGameComplete = (result: MiniGameResult) => {
-  const message =
-    result.gameType === 'catch'
-      ? (t.value.game.catchSuccess + ` ${result.score}`)
-      : (t.value.game.bubbleSuccess + ` ${result.score}`)
+  const definition = miniGameDefinitions[result.gameType] ?? miniGameDefinitions.catch
+  const message = settings.value.language === 'zh'
+    ? `${definition.title.zh}完成，得分 ${result.score}，Koko 的心情和亲密度都更新了。`
+    : `${definition.title.en} complete: ${result.score}. Koko's mood and bond were updated.`
   triggerPetAction('sparkle', message, 2600)
 }
 
@@ -387,20 +474,29 @@ onShow(() => {
           <view class="home-topbar__title">{{ pet.name }}</view>
         </view>
         <view class="home-topbar__actions">
-          <view class="home-topbar__coins">
+          <button class="home-topbar__coins" hover-class="home-topbar__coins--pressed" @click="openCoinLog">
             <view class="home-coin-icon" />
             <text>{{ economy.coins }}</text>
-          </view>
+          </button>
         </view>
       </view>
 
       <view class="home-stage__progress">
-        <view v-for="item in compactStats" :key="item.label" class="home-progress-card">
-          <view class="home-progress-card__label">{{ item.label }}</view>
+        <button
+          v-for="item in compactStats"
+          :key="item.key"
+          class="home-progress-card"
+          hover-class="home-progress-card--pressed"
+          @click="openStatDetail(item.key)"
+        >
+          <view class="home-progress-card__row">
+            <view class="home-progress-card__label">{{ item.label }}</view>
+            <view class="home-progress-card__value">{{ item.value }}</view>
+          </view>
           <view class="home-progress-card__track">
             <view class="home-progress-card__fill" :class="`home-progress-card__fill--${item.tint}`" :style="{ width: `${item.value}%` }" />
           </view>
-        </view>
+        </button>
       </view>
 
       <view class="home-stage">
@@ -416,7 +512,7 @@ onShow(() => {
           >
             <view class="pet-model-stage__halo" />
             <view class="pet-model-stage__platform" />
-            <view v-if="shouldShowPetLottie" class="pet-lottie-wrap">
+            <view v-if="shouldShowPetLottie" class="pet-lottie-wrap" :class="`pet-lottie-wrap--${petAction}`">
               <PetLottieAvatar :size-rpx="PET_LOTTIE_SIZE_RPX" :mirror="petFacingMirrored" />
             </view>
           </view>
@@ -458,6 +554,25 @@ onShow(() => {
       </view>
     </view>
 
+    <view v-if="activeStatDetail" class="home-stat-layer">
+      <view class="home-stat-layer__mask" @click="closeStatDetail" />
+      <view class="home-stat-panel">
+        <button class="home-stat-panel__close" @click="closeStatDetail">×</button>
+        <view class="home-stat-panel__head">
+          <view>
+            <view class="home-stat-panel__eyebrow">{{ activeStatDetail.level }}</view>
+            <view class="home-stat-panel__title">{{ activeStatDetail.label }}</view>
+          </view>
+          <view class="home-stat-panel__score">{{ activeStatDetail.value }}/100</view>
+        </view>
+        <view class="home-stat-panel__track">
+          <view class="home-stat-panel__fill" :class="`home-progress-card__fill--${activeStatDetail.tint}`" :style="{ width: `${activeStatDetail.value}%` }" />
+        </view>
+        <view class="home-stat-panel__message">{{ activeStatDetail.message }}</view>
+        <view class="home-stat-panel__suggestion">{{ activeStatDetail.suggestion }}</view>
+      </view>
+    </view>
+
     <view v-if="careResourcePanelOpen && selectedCareResource" class="care-resource-layer">
       <view class="care-resource-layer__mask" @click="closeCareResourcePanel" />
       <view class="care-resource-panel">
@@ -473,6 +588,10 @@ onShow(() => {
           <view class="care-resource-panel__count">
             <text>{{ careResourcePanelCopy.available }}</text>
             <text>{{ selectedCareResource.count }}</text>
+          </view>
+          <view class="care-resource-panel__count care-resource-panel__count--cost">
+            <text>{{ careResourcePanelCopy.coinCost }}</text>
+            <text>-{{ selectedCareResource.coinCost }}</text>
           </view>
           <view class="care-resource-panel__effect">{{ selectedCareResource.effect }}</view>
           <view v-if="activeCareResourceAction === 'feedMeal' && digestStatus.isDigesting" class="care-resource-panel__warning">
@@ -730,7 +849,16 @@ onShow(() => {
   font-weight: 800;
   gap: 10rpx;
   line-height: 1;
+  margin: 0;
   padding: 16rpx 22rpx;
+}
+
+.home-topbar__coins::after {
+  border: 0;
+}
+
+.home-topbar__coins--pressed {
+  transform: scale(0.96);
 }
 
 .home-coin-icon {
@@ -827,7 +955,34 @@ onShow(() => {
   background: rgba(255, 253, 248, 0.74);
   border: 2rpx solid rgba(176, 143, 102, 0.12);
   border-radius: 22rpx;
-  padding: 14rpx 16rpx 16rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  min-height: 124rpx;
+  overflow: visible;
+  padding: 18rpx 16rpx 18rpx;
+  text-align: left;
+  width: 100%;
+}
+
+.home-progress-card::after,
+.home-stat-panel__close::after {
+  border: none;
+}
+
+.home-progress-card--pressed {
+  transform: scale(0.97);
+}
+
+.home-progress-card__row {
+  align-items: center;
+  display: flex;
+  gap: 8rpx;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .home-progress-card__label {
@@ -835,17 +990,31 @@ onShow(() => {
   font-size: 20rpx;
 }
 
+.home-progress-card__value {
+  color: #253047;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
 .home-progress-card__track {
   background: rgba(180, 215, 203, 0.42);
+  border: 2rpx solid rgba(255, 255, 255, 0.72);
   border-radius: 999rpx;
-  height: 14rpx;
-  margin-top: 12rpx;
+  box-sizing: border-box;
+  display: block;
+  flex: 0 0 auto;
+  height: 20rpx;
+  margin-top: 16rpx;
   overflow: hidden;
+  width: 100%;
 }
 
 .home-progress-card__fill {
+  display: block;
   border-radius: inherit;
   height: 100%;
+  min-width: 10rpx;
+  transition: width 0.22s ease;
 }
 
 .home-progress-card__fill--sun {
@@ -858,6 +1027,114 @@ onShow(() => {
 
 .home-progress-card__fill--sky {
   background: linear-gradient(90deg, #7fd4ed, #61b8f0);
+}
+
+.home-stat-layer {
+  bottom: 0;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 48;
+}
+
+.home-stat-layer__mask {
+  background: rgba(19, 37, 49, 0.24);
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.home-stat-panel {
+  background: linear-gradient(180deg, #fffdf8 0%, #f5fbf1 100%);
+  border-radius: 32rpx 32rpx 0 0;
+  bottom: 0;
+  box-shadow: 0 -18rpx 56rpx rgba(167, 124, 72, 0.18);
+  box-sizing: border-box;
+  left: 0;
+  padding: 26rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  position: absolute;
+  right: 0;
+}
+
+.home-stat-panel__close {
+  align-items: center;
+  background: rgba(255, 248, 236, 0.9);
+  border: 2rpx solid rgba(176, 143, 102, 0.14);
+  border-radius: 50%;
+  color: #365f56;
+  display: flex;
+  font-size: 28rpx;
+  font-weight: 900;
+  height: 58rpx;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  right: 24rpx;
+  top: 22rpx;
+  width: 58rpx;
+}
+
+.home-stat-panel__head {
+  align-items: flex-start;
+  display: flex;
+  gap: 22rpx;
+  justify-content: space-between;
+  padding-right: 72rpx;
+}
+
+.home-stat-panel__eyebrow {
+  color: #5f8c78;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.home-stat-panel__title {
+  color: #253047;
+  font-size: 38rpx;
+  font-weight: 900;
+  margin-top: 6rpx;
+}
+
+.home-stat-panel__score {
+  color: #253047;
+  flex: 0 0 auto;
+  font-size: 36rpx;
+  font-weight: 900;
+}
+
+.home-stat-panel__track {
+  background: rgba(180, 215, 203, 0.42);
+  border-radius: 999rpx;
+  height: 20rpx;
+  margin-top: 26rpx;
+  overflow: hidden;
+}
+
+.home-stat-panel__fill {
+  border-radius: inherit;
+  height: 100%;
+}
+
+.home-stat-panel__message,
+.home-stat-panel__suggestion {
+  color: #365f56;
+  font-size: 27rpx;
+  font-weight: 800;
+  line-height: 1.55;
+  margin-top: 22rpx;
+}
+
+.home-stat-panel__suggestion {
+  background: rgba(255, 248, 236, 0.74);
+  border: 2rpx solid rgba(176, 143, 102, 0.12);
+  border-radius: 22rpx;
+  color: #7d8a74;
+  padding: 18rpx 20rpx;
 }
 
 .home-stage__model {
@@ -959,10 +1236,53 @@ onShow(() => {
   z-index: 2;
 }
 
+.pet-lottie-wrap--greet,
+.pet-lottie-wrap--sparkle,
+.pet-lottie-wrap--pounce {
+  animation: home-dog-hop 0.68s ease-in-out infinite alternate;
+}
+
+.pet-lottie-wrap--munch,
+.pet-lottie-wrap--sip {
+  animation: home-dog-nod 0.82s ease-in-out infinite;
+}
+
+.pet-lottie-wrap--stretch {
+  animation: home-dog-stretch 0.9s ease-in-out infinite alternate;
+}
+
 .pet-lottie {
   height: 600rpx;
   position: relative;
   width: 600rpx;
+}
+
+@keyframes home-dog-hop {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-16rpx);
+  }
+}
+
+@keyframes home-dog-nod {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(8rpx) scale(0.98);
+  }
+}
+
+@keyframes home-dog-stretch {
+  from {
+    transform: scaleY(1);
+  }
+  to {
+    transform: scaleY(1.04);
+  }
 }
 
 .pet-cat {
@@ -1410,6 +1730,16 @@ onShow(() => {
   font-weight: 800;
   justify-content: space-between;
   padding: 20rpx 22rpx;
+}
+
+.care-resource-panel__count + .care-resource-panel__count {
+  margin-top: 12rpx;
+}
+
+.care-resource-panel__count--cost {
+  background: rgba(255, 248, 223, 0.82);
+  border-color: rgba(217, 137, 74, 0.2);
+  color: #9a6633;
 }
 
 .care-resource-panel__effect,

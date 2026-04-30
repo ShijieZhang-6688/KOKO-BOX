@@ -7,11 +7,13 @@ const props = withDefaults(
   defineProps<{
     sizeRpx?: number
     paused?: boolean
+    still?: boolean
     mirror?: boolean
   }>(),
   {
     sizeRpx: 600,
     paused: false,
+    still: false,
     mirror: false,
   },
 )
@@ -28,7 +30,11 @@ const wrapperStyle = computed(() => ({
   transform: `scaleX(${props.mirror ? -1 : 1})`,
 }))
 
-let lottieAnimation: { destroy?: () => void } | null = null
+let lottieAnimation: {
+  destroy?: () => void
+  goToAndStop?: (value: number, isFrame?: boolean) => void
+  stop?: () => void
+} | null = null
 
 const clearLottieAnimation = () => {
   if (!lottieAnimation) return
@@ -72,19 +78,23 @@ const initPetLottie = () => {
       lottie.setup(canvas)
       lottieAnimation = lottie.loadAnimation({
         loop: true,
-        autoplay: true,
+        autoplay: !props.still,
         animationData: happyDogAnimation,
         rendererSettings: {
           context,
           preserveAspectRatio: 'xMidYMid meet',
         },
       })
+      if (props.still) {
+        lottieAnimation?.goToAndStop?.(12, true)
+        lottieAnimation?.stop?.()
+      }
     })
     .exec()
 }
 
 watch(
-  () => [props.paused, props.sizeRpx],
+  () => [props.paused, props.sizeRpx, props.still],
   async ([paused]) => {
     clearLottieAnimation()
     if (paused) return

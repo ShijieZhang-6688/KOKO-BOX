@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
+import PetLottieAvatar from '../components/PetLottieAvatar.vue'
 import { useKokoState } from '../composables/useKokoState'
 import { useLanguage } from '../composables/useLanguage'
 
@@ -124,7 +125,9 @@ onBeforeUnmount(() => {
         :style="{ left: `${bubble.left}%`, bottom: `${bubble.bottom}%`, width: `${bubble.size}rpx`, height: `${bubble.size}rpx` }"
         @click="popBubble(bubble.id)"
       />
-      <view class="pet-game-pet" />
+      <view class="pet-game-pet">
+        <PetLottieAvatar :size-rpx="160" />
+      </view>
     </view>
 
     <view class="pet-game-summary">{{ summary }}</view>
@@ -224,14 +227,15 @@ onBeforeUnmount(() => {
 }
 
 .pet-game-pet {
-  background: linear-gradient(180deg, #fffdf0 0%, #ffe3af 100%);
-  border-radius: 46% 46% 42% 42%;
+  align-items: center;
   bottom: 44rpx;
-  height: 138rpx;
+  display: flex;
+  height: 168rpx;
+  justify-content: center;
   left: 50%;
   position: absolute;
   transform: translateX(-50%);
-  width: 126rpx;
+  width: 168rpx;
 }
 
 .pet-game-summary {

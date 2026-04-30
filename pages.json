@@ -32,6 +32,12 @@
       }
     },
     {
+      "path": "pages/coin-log/index",
+      "style": {
+        "navigationBarTitleText": "金豆明细"
+      }
+    },
+    {
       "path": "pages/profile/index",
       "style": {
         "navigationBarTitleText": "Me"

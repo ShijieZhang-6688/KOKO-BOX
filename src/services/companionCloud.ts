@@ -1,6 +1,7 @@
 import { isWechatCloudConfigured } from '../config/cloud'
 import type {
   CompanionEconomy,
+  CoinLog,
   EconomyRewardLedgerEntry,
   Pet,
   ShopPurchaseRecord,
@@ -105,6 +106,26 @@ const normalizePurchaseHistory = (value: unknown): ShopPurchaseRecord[] =>
     .filter((item): item is ShopPurchaseRecord => Boolean(item))
     .slice(-100)
 
+const normalizeCoinLogs = (value: unknown): CoinLog[] =>
+  (Array.isArray(value) ? value : [])
+    .map((item, index) => {
+      const record = (item ?? {}) as Partial<CoinLog>
+      const amount = clampNumber(record.amount, -999999, 999999, 0)
+      if (!amount) return null
+      const type = record.type === 'consume' || amount < 0 ? 'consume' : 'gain'
+      const signedAmount = type === 'consume' ? -Math.abs(amount) : Math.abs(amount)
+      return {
+        id: normalizeText(record.id, 80) || `coin-log-${index + 1}`,
+        type,
+        amount: signedAmount,
+        reason: normalizeText(record.reason, 80) || (type === 'gain' ? 'Reward' : 'Consume'),
+        created_at: normalizeText(record.created_at, 40) || new Date().toISOString(),
+      }
+    })
+    .filter((item): item is CoinLog => Boolean(item))
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+    .slice(0, 300)
+
 export const normalizeCompanionEconomy = (value: unknown, fallbackCoins = 0): CompanionEconomy => {
   const source = (value ?? {}) as Partial<CompanionEconomy>
   return {
@@ -112,6 +133,7 @@ export const normalizeCompanionEconomy = (value: unknown, fallbackCoins = 0): Co
     inventory: normalizeInventory(source.inventory),
     purchaseHistory: normalizePurchaseHistory(source.purchaseHistory),
     rewardLedger: normalizeRewardLedger(source.rewardLedger),
+    coinLogs: normalizeCoinLogs(source.coinLogs),
     dailyChatRewards: normalizeDailyChatRewards(source.dailyChatRewards),
     starterResourcesGranted: Boolean(source.starterResourcesGranted),
     updatedAt: normalizeText(source.updatedAt, 40) || new Date().toISOString(),

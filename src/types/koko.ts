@@ -28,11 +28,23 @@ export type PetActionType =
   | 'munch'
   | 'sip'
   | 'sparkle'
-export type MiniGameType = 'catch' | 'bubble'
+export type MiniGameType = 'catch' | 'bubble' | 'jumpRope' | 'hideSeek'
+export type MiniGameAnimationState =
+  | 'idle'
+  | 'throwing'
+  | 'fetching'
+  | 'returning'
+  | 'watching'
+  | 'popping'
+  | 'jumping'
+  | 'fallen'
+  | 'hiding'
+  | 'found'
 export type CareActionKey = 'feedMeal' | 'feedSnack' | 'feedWater' | 'clean' | 'heal' | 'rest' | 'play'
 export type DeviceType = 'miniapp' | 'desktop' | 'm5'
 export type SyncStatus = 'success' | 'offline' | 'retrying'
 export type EconomyRewardSource = 'task' | 'chat' | 'mini-game' | 'system'
+export type CoinLogType = 'gain' | 'consume'
 export type ShopItemId = 'meal' | 'water' | 'clean-kit'
 export type FacingDirection =
   | 'front'
@@ -202,11 +214,20 @@ export interface ShopPurchaseRecord {
   createdAt: string
 }
 
+export interface CoinLog {
+  id: string
+  type: CoinLogType
+  amount: number
+  reason: string
+  created_at: string
+}
+
 export interface CompanionEconomy {
   coins: number
   inventory: Record<string, number>
   purchaseHistory: ShopPurchaseRecord[]
   rewardLedger: Record<string, EconomyRewardLedgerEntry>
+  coinLogs: CoinLog[]
   dailyChatRewards: Record<string, number>
   starterResourcesGranted?: boolean
   updatedAt: string
@@ -232,6 +253,54 @@ export interface MiniGameResult {
   bonusIntimacy?: number
   bonusEnergy?: number
   bonusClean?: number
+  bonusCoins?: number
+  combo?: number
+  success?: boolean
+}
+
+export interface MiniGameRewardConfig {
+  mood: number
+  intimacy: number
+  coins: number
+  clean?: number
+  energy?: number
+  scoreMoodStep: number
+  scoreIntimacyStep: number
+  scoreCoinStep: number
+  maxBonusMood: number
+  maxBonusIntimacy: number
+  maxBonusCoins: number
+}
+
+export interface MiniGameSceneConfig {
+  scene: 'grass' | 'bathroom' | 'outdoor' | 'hideout'
+  backgroundClass: string
+  petPlacement: 'center' | 'lower-center' | 'roaming' | 'hidden'
+  props: string[]
+}
+
+export interface MiniGameDefinition {
+  game_id: MiniGameType
+  title: Record<UserSettings['language'], string>
+  tabLabel: Record<UserSettings['language'], string>
+  goal: Record<UserSettings['language'], string>
+  startText: Record<UserSettings['language'], string>
+  runningText: Record<UserSettings['language'], string>
+  successText: Record<UserSettings['language'], string>
+  failText: Record<UserSettings['language'], string>
+  actionLabel: Record<UserSettings['language'], string>
+  durationSeconds: number
+  targetScore: number
+  reward_config: MiniGameRewardConfig
+  animation_state: MiniGameAnimationState
+  scene_config: MiniGameSceneConfig
+}
+
+export interface HardwareInputEvent {
+  type: string
+  gameType?: MiniGameType
+  payload?: Record<string, unknown>
+  receivedAt?: string
 }
 
 export interface CareActionResult {

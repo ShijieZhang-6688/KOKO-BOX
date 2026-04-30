@@ -15,6 +15,12 @@ interface BuildingHotspot {
   height: number
 }
 
+interface TownGuideStep {
+  title: string
+  body: string
+  focus: 'map' | 'pet' | 'home' | 'playground' | 'shop' | 'task-board'
+}
+
 const MAP_WIDTH = 941
 const MAP_HEIGHT = 1672
 const townMapCandidates = [
@@ -31,6 +37,7 @@ const PET_MAX_X = 90
 const PET_MIN_Y = 26
 const PET_MAX_Y = 92
 const TOWN_HOME_ACTION_STORAGE_KEY = 'koko-town-home-action'
+const TOWN_GUIDE_STORAGE_KEY = 'hasSeenTownGuide'
 
 const { pet, economy, shopItems, todayTasks, completedTasks, settings, purchaseShopItem, syncEconomyFromCloud } = useKokoState()
 const { t } = useLanguage()
@@ -50,6 +57,8 @@ const petMoveDurationMs = ref(0)
 const petMirror = ref(false)
 const petAction = ref<PetActionType>('idle')
 const walkingEnabled = ref(true)
+const guideVisible = ref(false)
+const guideStepIndex = ref(0)
 
 let moveTimer: ReturnType<typeof setTimeout> | undefined
 let roamTimer: ReturnType<typeof setInterval> | undefined
@@ -100,6 +109,33 @@ const ensureTownMap = async () => {
 const hotspotStyle = (spot: BuildingHotspot) =>
   `left:${(spot.x / MAP_WIDTH) * 100}%;top:${(spot.y / MAP_HEIGHT) * 100}%;width:${(spot.width / MAP_WIDTH) * 100}%;height:${(spot.height / MAP_HEIGHT) * 100}%;`
 
+const guideHighlightStyle = computed(() => {
+  const focus = activeGuideStep.value.focus
+  if (focus === 'map') {
+    return 'left:6%;top:10%;width:88%;height:78%;'
+  }
+  if (focus === 'pet') {
+    return `left:${petPosition.value.x - 14}%;top:${petPosition.value.y - 20}%;width:28%;height:24%;`
+  }
+
+  const spot = hotspots.value.find((item) => item.id === focus)
+  if (!spot) return 'left:8%;top:14%;width:84%;height:24%;'
+
+  const left = ((spot.x - 24) / MAP_WIDTH) * 100
+  const top = ((spot.y - 24) / MAP_HEIGHT) * 100
+  const width = ((spot.width + 48) / MAP_WIDTH) * 100
+  const height = ((spot.height + 48) / MAP_HEIGHT) * 100
+  return `left:${left}%;top:${top}%;width:${width}%;height:${height}%;`
+})
+
+const guideButtonText = computed(() => {
+  const isLast = guideStepIndex.value >= guideSteps.value.length - 1
+  if (settings.value.language === 'zh') return isLast ? '完成' : '下一步'
+  return isLast ? 'Done' : 'Next'
+})
+
+const guideEntryText = computed(() => (settings.value.language === 'zh' ? '小镇指南' : 'Town Guide'))
+
 const petStyle = computed(() => ({
   left: `${petPosition.value.x}%`,
   top: `${petPosition.value.y}%`,
@@ -116,6 +152,34 @@ const shopText = computed(() => ({
   pending: settings.value.language === 'zh' ? '待办' : 'pending',
   done: settings.value.language === 'zh' ? '完成' : 'done',
 }))
+
+const guideSteps = computed<TownGuideStep[]>(() => {
+  const isZh = settings.value.language === 'zh'
+  return [
+    {
+      title: isZh ? '欢迎来到 Koko 小镇' : 'Welcome to Koko Town',
+      body: isZh ? '这里是宠物探索、购物、任务和互动入口的地图页面。' : 'This map connects pet exploration, shop, tasks, and interaction entrances.',
+      focus: 'map',
+    },
+    {
+      title: isZh ? '宠物可以移动' : 'Your pet can move',
+      body: isZh ? '点击地图任意位置，Koko 会用简单动画走过去。' : 'Tap anywhere on the map and Koko will walk there with a simple animation.',
+      focus: 'pet',
+    },
+    {
+      title: isZh ? '每个地点都有作用' : 'Every location has a role',
+      body: isZh ? '商店可兑换资源，任务板查看待办，游乐场可进入玩耍。' : 'The shop redeems resources, the board shows tasks, and the playground opens play.',
+      focus: 'shop',
+    },
+    {
+      title: isZh ? '点击地点查看详情' : 'Tap places for details',
+      body: isZh ? '地点卡片支持左上角关闭，也可以点击遮罩关闭。' : 'Place cards can be closed from the top-left X or by tapping the overlay.',
+      focus: 'task-board',
+    },
+  ]
+})
+
+const activeGuideStep = computed(() => guideSteps.value[guideStepIndex.value] ?? guideSteps.value[0])
 
 const townActionText = computed(() => {
   const isZh = settings.value.language === 'zh'
@@ -172,7 +236,7 @@ const movePetTo = (nextX: number, nextY: number) => {
 }
 
 const roamSomewhere = () => {
-  if (!walkingEnabled.value || activeBuilding.value) return
+  if (!walkingEnabled.value || activeBuilding.value || guideVisible.value) return
   movePetTo(
     petPosition.value.x + randomBetween(-18, 18),
     petPosition.value.y + randomBetween(-14, 14),
@@ -188,6 +252,7 @@ const getTouchPoint = (event: any) => {
 }
 
 const movePetFromMapTap = (event: any) => {
+  if (guideVisible.value) return
   const { x, y } = getTouchPoint(event)
   const windowInfo = typeof uni.getWindowInfo === 'function' ? uni.getWindowInfo() : undefined
   const width = windowInfo?.windowWidth ?? 1
@@ -196,6 +261,8 @@ const movePetFromMapTap = (event: any) => {
 }
 
 const openBuildingPopup = (spot: BuildingHotspot) => {
+  if (guideVisible.value) return
+  movePetTo((spot.x / MAP_WIDTH) * 100, (spot.y / MAP_HEIGHT) * 100 + 10)
   activeBuilding.value = spot
   shopMessage.value = ''
 }
@@ -241,6 +308,40 @@ const goChat = () => {
   uni.navigateTo({ url: '/pages/chat/index' })
 }
 
+const showTownGuideIfNeeded = () => {
+  if (typeof uni === 'undefined' || typeof uni.getStorageSync !== 'function') return
+  if (uni.getStorageSync(TOWN_GUIDE_STORAGE_KEY)) return
+  guideVisible.value = true
+  guideStepIndex.value = 0
+  walkingEnabled.value = false
+  petAction.value = 'idle'
+}
+
+const openTownGuide = () => {
+  closeBuildingPopup()
+  guideVisible.value = true
+  guideStepIndex.value = 0
+  walkingEnabled.value = false
+  petAction.value = 'idle'
+}
+
+const finishTownGuide = () => {
+  guideVisible.value = false
+  walkingEnabled.value = true
+  if (typeof uni !== 'undefined' && typeof uni.setStorageSync === 'function') {
+    uni.setStorageSync(TOWN_GUIDE_STORAGE_KEY, true)
+  }
+  queueIdle(900)
+}
+
+const nextTownGuideStep = () => {
+  if (guideStepIndex.value >= guideSteps.value.length - 1) {
+    finishTownGuide()
+    return
+  }
+  guideStepIndex.value += 1
+}
+
 watch(
   () => activeBuilding.value,
   (value) => {
@@ -249,7 +350,7 @@ watch(
       petAction.value = 'idle'
       return
     }
-    walkingEnabled.value = true
+    walkingEnabled.value = !guideVisible.value
   },
 )
 
@@ -257,6 +358,7 @@ onMounted(() => {
   void ensureTownMap()
   void syncEconomyFromCloud()
   petMirror.value = false
+  showTownGuideIfNeeded()
   roamTimer = setInterval(() => {
     roamSomewhere()
   }, 5200)
@@ -272,7 +374,7 @@ onBeforeUnmount(() => {
 
 <template>
   <view class="town-page">
-    <view class="town-map-wrap" @click="movePetFromMapTap">
+    <view class="town-map-wrap" @tap="movePetFromMapTap">
       <view class="town-map">
         <image class="town-map__image" :src="townMapSrc" mode="scaleToFill" @error="handleTownMapError" />
 
@@ -287,15 +389,21 @@ onBeforeUnmount(() => {
           :key="spot.id"
           class="town-hotspot"
           :style="hotspotStyle(spot)"
-          @click.stop="openBuildingPopup(spot)"
+          @tap.stop="openBuildingPopup(spot)"
         >
           <view class="town-hotspot__label">{{ spot.name }}</view>
         </view>
       </view>
     </view>
 
-    <view v-if="activeBuilding" class="town-popup-mask" @click="closeBuildingPopup">
-      <view class="town-popup" @click.stop>
+    <button class="town-guide-entry" hover-class="town-guide-entry--pressed" @tap.stop="openTownGuide">
+      <text class="town-guide-entry__icon">?</text>
+      <text>{{ guideEntryText }}</text>
+    </button>
+
+    <view v-if="activeBuilding" class="town-popup-mask" @tap="closeBuildingPopup">
+      <view class="town-popup" @tap.stop>
+        <button class="town-popup__close" @tap.stop="closeBuildingPopup">×</button>
         <view class="town-popup__title">{{ activeBuilding.name }}</view>
         <view class="town-popup__description">{{ activeBuilding.description }}</view>
 
@@ -337,6 +445,17 @@ onBeforeUnmount(() => {
         <button v-else-if="activeBuilding.id === 'home'" class="town-popup__button" @click="goHome">{{ townActionText.openHome }}</button>
         <button v-else-if="activeBuilding.id === 'playground'" class="town-popup__button" @click="goHomePlay">{{ townActionText.openPlay }}</button>
         <button v-else class="town-popup__button" @click="closeBuildingPopup">{{ t.town.ok }}</button>
+      </view>
+    </view>
+
+    <view v-if="guideVisible" class="town-guide-layer" @tap.stop>
+      <view class="town-guide-layer__mask" />
+      <view class="town-guide-highlight" :style="guideHighlightStyle" />
+      <view class="town-guide-bubble">
+        <view class="town-guide-bubble__step">{{ guideStepIndex + 1 }} / {{ guideSteps.length }}</view>
+        <view class="town-guide-bubble__title">{{ activeGuideStep.title }}</view>
+        <view class="town-guide-bubble__body">{{ activeGuideStep.body }}</view>
+        <button class="town-guide-bubble__button" @tap.stop="nextTownGuideStep">{{ guideButtonText }}</button>
       </view>
     </view>
   </view>
@@ -394,6 +513,45 @@ onBeforeUnmount(() => {
   top: 50%;
   transform: translate(-50%, -50%);
   white-space: nowrap;
+}
+
+.town-guide-entry {
+  align-items: center;
+  background: rgba(255, 253, 248, 0.94);
+  border: 2rpx solid rgba(95, 199, 168, 0.26);
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 28rpx rgba(40, 72, 59, 0.16);
+  color: #365f56;
+  display: flex;
+  font-size: 24rpx;
+  font-weight: 900;
+  gap: 8rpx;
+  left: 24rpx;
+  line-height: 1;
+  margin: 0;
+  padding: 14rpx 20rpx 14rpx 14rpx;
+  position: fixed;
+  top: calc(22rpx + env(safe-area-inset-top));
+  z-index: 18;
+}
+
+.town-guide-entry::after {
+  border: none;
+}
+
+.town-guide-entry--pressed {
+  transform: scale(0.96);
+}
+
+.town-guide-entry__icon {
+  align-items: center;
+  background: linear-gradient(135deg, #ffe08a, #8adfb0);
+  border-radius: 50%;
+  color: #173f38;
+  display: flex;
+  height: 34rpx;
+  justify-content: center;
+  width: 34rpx;
 }
 
 .town-popup-mask {
@@ -470,8 +628,32 @@ onBeforeUnmount(() => {
   border-radius: 30rpx;
   box-shadow: 0 24rpx 48rpx rgba(47, 67, 58, 0.22);
   max-width: 600rpx;
-  padding: 32rpx 30rpx 28rpx;
+  padding: 76rpx 30rpx 28rpx;
+  position: relative;
   width: 100%;
+}
+
+.town-popup__close {
+  align-items: center;
+  background: rgba(255, 240, 202, 0.9);
+  border-radius: 50%;
+  color: #7d644f;
+  display: flex;
+  font-size: 38rpx;
+  font-weight: 900;
+  height: 56rpx;
+  justify-content: center;
+  left: 20rpx;
+  line-height: 56rpx;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  top: 18rpx;
+  width: 56rpx;
+}
+
+.town-popup__close::after {
+  border: none;
 }
 
 .town-popup__title {
@@ -629,6 +811,82 @@ onBeforeUnmount(() => {
 .town-board__task--done {
   color: #8a7a68;
   text-decoration: line-through;
+}
+
+.town-guide-layer {
+  bottom: 0;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 60;
+}
+
+.town-guide-layer__mask {
+  background: rgba(20, 36, 32, 0.54);
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.town-guide-highlight {
+  border: 4rpx solid rgba(255, 224, 138, 0.95);
+  border-radius: 28rpx;
+  box-shadow: 0 0 0 9999rpx rgba(20, 36, 32, 0.12), 0 0 28rpx rgba(255, 224, 138, 0.48);
+  box-sizing: border-box;
+  position: absolute;
+  z-index: 61;
+}
+
+.town-guide-bubble {
+  background: #fffdf8;
+  border: 2rpx solid rgba(176, 143, 102, 0.18);
+  border-radius: 28rpx;
+  bottom: calc(46rpx + env(safe-area-inset-bottom));
+  box-shadow: 0 24rpx 48rpx rgba(20, 36, 32, 0.28);
+  box-sizing: border-box;
+  left: 34rpx;
+  padding: 26rpx;
+  position: absolute;
+  right: 34rpx;
+  z-index: 62;
+}
+
+.town-guide-bubble__step {
+  color: #5f8c78;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.town-guide-bubble__title {
+  color: #253047;
+  font-size: 34rpx;
+  font-weight: 900;
+  margin-top: 8rpx;
+}
+
+.town-guide-bubble__body {
+  color: #6d7890;
+  font-size: 26rpx;
+  line-height: 1.55;
+  margin-top: 12rpx;
+}
+
+.town-guide-bubble__button {
+  background: linear-gradient(135deg, #ffe08a, #8adfb0);
+  border-radius: 999rpx;
+  color: #173f38;
+  font-size: 28rpx;
+  font-weight: 900;
+  height: 78rpx;
+  line-height: 78rpx;
+  margin: 24rpx 0 0;
+}
+
+.town-guide-bubble__button::after {
+  border: none;
 }
 
 :deep(.page-shell) {

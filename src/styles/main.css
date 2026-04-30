@@ -14,17 +14,36 @@
   --lime: #dce7c5;
 }
 
+page,
 view,
 text,
 button,
 input,
 textarea,
+picker,
 scroll-view,
 swiper,
 swiper-item,
 navigator,
+cover-view,
 image {
   box-sizing: border-box;
+}
+
+page,
+view,
+text,
+button,
+input,
+textarea,
+picker,
+scroll-view,
+swiper,
+swiper-item,
+navigator,
+cover-view {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: 0;
 }
 
 html,
@@ -32,7 +51,7 @@ body,
 #app {
   min-height: 100%;
   margin: 0;
-  font-family: 'Aptos', 'Segoe UI', 'Helvetica Neue', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', sans-serif;
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.98), transparent 30%),
@@ -2829,6 +2848,465 @@ button {
   border: 0;
 }
 
+.planner-live-calendar {
+  background: linear-gradient(145deg, #ffffff, #f2fbf5);
+  border: 1px solid rgba(143, 176, 136, 0.24);
+  border-radius: 20px;
+  box-shadow: 0 10px 22px rgba(131, 103, 66, 0.08);
+  display: grid;
+  gap: 12px;
+  margin: 34px 0 16px;
+  padding: 14px;
+}
+
+.planner-live-calendar__head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.planner-live-calendar__headline {
+  flex: 1;
+  min-width: 0;
+}
+
+.planner-live-calendar__controls {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.planner-live-calendar__nav,
+.planner-live-calendar__year {
+  align-items: center;
+  background: rgba(255, 248, 236, 0.9);
+  border: 1px solid rgba(196, 156, 82, 0.16);
+  border-radius: 999px;
+  color: #365f56;
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 900;
+  height: 32px;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  min-height: 32px;
+  padding: 0;
+}
+
+.planner-live-calendar__nav {
+  width: 32px;
+}
+
+.planner-live-calendar__year {
+  min-width: 48px;
+  padding: 0 10px;
+}
+
+.planner-live-calendar__nav::after,
+.planner-live-calendar__year::after,
+.planner-live-calendar__day::after,
+.planner-year-panel__close::after,
+.planner-year-panel__nav::after,
+.planner-year-cell::after,
+.planner-date-card__close::after,
+.planner-date-card__primary::after,
+.planner-date-card__ghost::after,
+.planner-punch-editor__mini::after {
+  border: 0;
+}
+
+.planner-live-calendar__eyebrow {
+  color: #6c8f73;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.planner-live-calendar__time {
+  color: #2f2e36;
+  font-size: 1.08rem;
+  font-weight: 900;
+  margin-top: 3px;
+}
+
+.planner-live-calendar__range {
+  color: #7d8a74;
+  font-size: 0.76rem;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.planner-live-calendar__days {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.planner-live-calendar__day {
+  align-items: center;
+  background: rgba(255, 248, 236, 0.72);
+  border: 1px solid rgba(196, 156, 82, 0.14);
+  border-radius: 14px;
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  line-height: 1.2;
+  margin: 0;
+  min-height: 70px;
+  padding: 8px 2px;
+  position: relative;
+  text-align: center;
+}
+
+.planner-live-calendar__day--active {
+  background: #365f56;
+  color: #ffffff;
+}
+
+.planner-live-calendar__day--selected {
+  box-shadow: inset 0 0 0 2px rgba(95, 199, 168, 0.56);
+}
+
+.planner-live-calendar__day--marked::before {
+  background: #f0b94a;
+  border-radius: 999px;
+  content: '';
+  height: 7px;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 7px;
+}
+
+.planner-live-calendar__weekday {
+  color: #8a7a68;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.planner-live-calendar__day--active .planner-live-calendar__weekday {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.planner-live-calendar__date {
+  font-size: 1.06rem;
+  font-weight: 900;
+}
+
+.planner-live-calendar__count {
+  align-items: center;
+  background: rgba(143, 220, 193, 0.32);
+  border-radius: 999px;
+  color: #365f56;
+  display: flex;
+  font-size: 0.68rem;
+  font-weight: 900;
+  height: 20px;
+  justify-content: center;
+  min-width: 20px;
+  padding: 0 5px;
+}
+
+.planner-live-calendar__day--active .planner-live-calendar__count {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+.planner-year-mask,
+.planner-date-mask {
+  background: rgba(29, 45, 43, 0.34);
+  bottom: 0;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 80;
+}
+
+.planner-date-mask {
+  z-index: 92;
+}
+
+.planner-year-panel {
+  background: #fffdf8;
+  border-radius: 24px 24px 0 0;
+  bottom: 0;
+  box-shadow: 0 -18px 40px rgba(70, 76, 54, 0.18);
+  box-sizing: border-box;
+  left: 0;
+  max-height: 86vh;
+  padding: 16px 14px calc(18px + env(safe-area-inset-bottom));
+  position: absolute;
+  right: 0;
+}
+
+.planner-year-panel__head {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 34px 38px minmax(0, 1fr) 38px;
+  margin-bottom: 12px;
+}
+
+.planner-year-panel__close,
+.planner-year-panel__nav {
+  align-items: center;
+  background: rgba(255, 248, 236, 0.92);
+  border: 1px solid rgba(196, 156, 82, 0.16);
+  border-radius: 50%;
+  color: #365f56;
+  display: flex;
+  font-size: 1rem;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  width: 34px;
+}
+
+.planner-year-panel__title {
+  color: #2f2e36;
+  font-size: 1.16rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.planner-year-panel__scroll {
+  max-height: calc(86vh - 84px);
+}
+
+.planner-year-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.planner-year-month {
+  background: linear-gradient(145deg, #ffffff, #f7fbf1);
+  border: 1px solid rgba(143, 176, 136, 0.18);
+  border-radius: 18px;
+  padding: 12px;
+}
+
+.planner-year-month__title {
+  color: #365f56;
+  font-size: 0.98rem;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.planner-year-month__week,
+.planner-year-month__days {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.planner-year-month__week {
+  color: #8a7a68;
+  font-size: 0.64rem;
+  font-weight: 800;
+  margin-bottom: 5px;
+  text-align: center;
+}
+
+.planner-year-cell {
+  align-items: center;
+  background: rgba(255, 248, 236, 0.7);
+  border: 1px solid rgba(196, 156, 82, 0.12);
+  border-radius: 10px;
+  color: #2f2e36;
+  display: flex;
+  height: 38px;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  min-height: 38px;
+  padding: 0;
+  position: relative;
+}
+
+.planner-year-cell--blank {
+  background: transparent;
+  border-color: transparent;
+}
+
+.planner-year-cell--today {
+  background: #365f56;
+  color: #ffffff;
+}
+
+.planner-year-cell--selected {
+  box-shadow: inset 0 0 0 2px rgba(95, 199, 168, 0.62);
+}
+
+.planner-year-cell--marked::before {
+  background: #f0b94a;
+  border-radius: 999px;
+  content: '';
+  height: 6px;
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 6px;
+}
+
+.planner-year-cell__day {
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.planner-year-cell__count {
+  align-items: center;
+  background: rgba(95, 199, 168, 0.28);
+  border-radius: 999px;
+  bottom: 3px;
+  color: #365f56;
+  display: flex;
+  font-size: 0.58rem;
+  font-weight: 900;
+  height: 14px;
+  justify-content: center;
+  min-width: 14px;
+  padding: 0 3px;
+  position: absolute;
+  right: 3px;
+}
+
+.planner-date-card {
+  background: #fffdf8;
+  border-radius: 24px 24px 0 0;
+  bottom: 0;
+  box-shadow: 0 -18px 40px rgba(70, 76, 54, 0.18);
+  box-sizing: border-box;
+  left: 0;
+  padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+  position: absolute;
+  right: 0;
+}
+
+.planner-date-card__close {
+  align-items: center;
+  background: rgba(255, 248, 236, 0.92);
+  border: 1px solid rgba(196, 156, 82, 0.16);
+  border-radius: 50%;
+  color: #365f56;
+  display: flex;
+  font-size: 1rem;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  width: 34px;
+}
+
+.planner-date-card__title {
+  color: #2f2e36;
+  font-size: 1.06rem;
+  font-weight: 900;
+  line-height: 1.35;
+  padding-right: 44px;
+}
+
+.planner-date-card__mark {
+  background: rgba(240, 185, 74, 0.18);
+  border-radius: 999px;
+  color: #805d2c;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  margin-top: 8px;
+  padding: 5px 10px;
+}
+
+.planner-date-card__actions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.planner-date-card__primary,
+.planner-date-card__ghost {
+  align-items: center;
+  border: 0;
+  border-radius: 14px;
+  display: flex;
+  font-size: 0.82rem;
+  font-weight: 900;
+  justify-content: center;
+  line-height: 1.2;
+  margin: 0;
+  min-height: 44px;
+  padding: 8px;
+}
+
+.planner-date-card__primary {
+  background: #365f56;
+  color: #ffffff;
+}
+
+.planner-date-card__primary--ddl {
+  background: #f0b94a;
+  color: #513715;
+}
+
+.planner-date-card__ghost {
+  background: rgba(255, 248, 236, 0.9);
+  color: #365f56;
+}
+
+.planner-date-card__section {
+  color: #365f56;
+  font-size: 0.86rem;
+  font-weight: 900;
+  margin-top: 18px;
+}
+
+.planner-date-card__tasks {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.planner-date-task {
+  background: rgba(247, 251, 241, 0.9);
+  border: 1px solid rgba(143, 176, 136, 0.18);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.planner-date-task__title {
+  color: #2f2e36;
+  font-size: 0.88rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.planner-date-task__meta,
+.planner-date-card__empty {
+  color: #8a7a68;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-top: 5px;
+}
+
+.planner-date-card__empty {
+  background: rgba(255, 248, 236, 0.68);
+  border-radius: 14px;
+  padding: 12px;
+}
+
 .planner-punch-board {
   background: #fff8ec;
   border: 0;
@@ -3461,6 +3939,11 @@ button {
   font-weight: 900;
 }
 
+.planner-punch-editor__field-row {
+  display: grid;
+  gap: 8px;
+}
+
 .planner-punch-editor__input,
 .planner-punch-editor__date {
   background: rgba(255, 247, 232, 0.86);
@@ -3475,6 +3958,24 @@ button {
   align-items: center;
   display: flex;
   font-weight: 800;
+}
+
+.planner-punch-editor__mini {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(196, 156, 82, 0.16);
+  border-radius: 999px;
+  color: #7c5c2c;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  justify-self: start;
+  line-height: 1;
+  margin: 0;
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .planner-punch-editor__actions {
