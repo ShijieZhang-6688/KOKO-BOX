@@ -3152,7 +3152,7 @@ onBeforeUnmount(() => {
   top: -6rpx;
   transform: translateX(-50%);
   width: 78rpx;
-  z-index: 1;
+  z-index: 3;
 }
 
 .mini-game-peek-pet__ear {
