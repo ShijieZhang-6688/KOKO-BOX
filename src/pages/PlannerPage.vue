@@ -47,6 +47,7 @@ const pomodoroVisible = ref(false)
 const pomodoroMinutes = ref(25)
 const pomodoroRemainingSeconds = ref(25 * 60)
 const pomodoroRunning = ref(false)
+const pomodoroPaused = ref(false)
 const pomodoroEnding = ref(false)
 const pomodoroScanningDevices = ref(false)
 const calendarNow = ref(new Date())
@@ -83,7 +84,8 @@ const pomodoroCopy = computed(() => ({
   subtitle: isZh.value ? '开始后会优先连接已绑定的 group 6 硬件，并让硬件小狗进入睡眠。' : 'Starting connects the bound group 6 hardware and puts the hardware corgi to sleep.',
   duration: isZh.value ? '专注时长' : 'Focus length',
   start: isZh.value ? '开始专注' : 'Start focus',
-  stop: isZh.value ? '停止' : 'Stop',
+  pause: isZh.value ? '暂停' : 'Pause',
+  end: isZh.value ? '结束' : 'End',
   connect: isZh.value ? '连接硬件' : 'Connect',
   scan: isZh.value ? '扫描设备' : 'Scan',
   scanningDevices: isZh.value ? '正在扫描 group 6 设备' : 'Scanning group 6 devices',
@@ -100,11 +102,18 @@ const pomodoroCopy = computed(() => ({
   error: isZh.value ? '连接异常' : 'Link error',
   done: isZh.value ? '倒计时结束，小狗已唤醒。' : 'Timer finished. Corgi is awake.',
   localStarted: isZh.value ? '番茄钟已开始，本地倒计时继续运行。' : 'Pomodoro started. Local timer keeps running.',
+  localResumed: isZh.value ? '番茄钟已继续，本地倒计时恢复运行。' : 'Pomodoro resumed. Local timer continues running.',
 }))
-const pomodoroButtonLabel = computed(() => (pomodoroRunning.value ? pomodoroCopy.value.buttonRunning : pomodoroCopy.value.buttonIdle))
+const pomodoroButtonLabel = computed(() => ((pomodoroRunning.value || pomodoroPaused.value) ? pomodoroCopy.value.buttonRunning : pomodoroCopy.value.buttonIdle))
 const pomodoroBleError = computed(() => corgiBle.lastError.value)
-const pomodoroStopButtonStyle = computed(() => (
+const pomodoroStartButtonLabel = computed(() => (pomodoroPaused.value ? (isZh.value ? '继续专注' : 'Resume focus') : pomodoroCopy.value.start))
+const pomodoroPauseButtonStyle = computed(() => (
   pomodoroRunning.value
+    ? { backgroundColor: '#e0b94e', borderColor: '#e0b94e', color: '#ffffff' }
+    : {}
+))
+const pomodoroEndButtonStyle = computed(() => (
+  (pomodoroRunning.value || pomodoroPaused.value)
     ? { backgroundColor: '#d95c49', borderColor: '#d95c49', color: '#ffffff' }
     : {}
 ))
@@ -321,6 +330,7 @@ const finishPomodoro = async () => {
   pomodoroEnding.value = true
   clearPomodoroTimer()
   pomodoroRunning.value = false
+  pomodoroPaused.value = false
   pomodoroRemainingSeconds.value = 0
   updatePet({ state: 'normal', energy: 76 })
   triggerHardwareAction('pomodoro-done', { command: 'DONE' })
@@ -343,8 +353,21 @@ const startPomodoroCountdown = () => {
 }
 
 const startPomodoro = async () => {
-  pomodoroRemainingSeconds.value = pomodoroMinutes.value * 60
+  if (pomodoroPaused.value) {
+    pomodoroRunning.value = true
+    pomodoroPaused.value = false
+    pomodoroEnding.value = false
+    updatePet({ state: 'resting', energy: 48 })
+    startPomodoroCountdown()
+    uni.showToast({ title: pomodoroCopy.value.localResumed, icon: 'none' })
+    return
+  }
+
+  if (!pomodoroPaused.value) {
+    pomodoroRemainingSeconds.value = pomodoroMinutes.value * 60
+  }
   pomodoroRunning.value = true
+  pomodoroPaused.value = false
   pomodoroEnding.value = false
   updatePet({ state: 'resting', energy: 48 })
   triggerHardwareAction('pomodoro-start', { command: 'START', minutes: pomodoroMinutes.value })
@@ -355,9 +378,17 @@ const startPomodoro = async () => {
   }
 }
 
-const stopPomodoro = async () => {
+const pausePomodoro = () => {
+  if (!pomodoroRunning.value) return
   clearPomodoroTimer()
   pomodoroRunning.value = false
+  pomodoroPaused.value = true
+}
+
+const endPomodoro = async () => {
+  clearPomodoroTimer()
+  pomodoroRunning.value = false
+  pomodoroPaused.value = false
   pomodoroRemainingSeconds.value = 0
   updatePet({ state: 'normal', energy: 70 })
   triggerHardwareAction('pomodoro-stop', { command: 'DONE' })
@@ -367,7 +398,7 @@ const stopPomodoro = async () => {
 const selectPomodoroDuration = (event: { detail: { value: number | string } }) => {
   const index = Number(event.detail.value)
   pomodoroMinutes.value = pomodoroDurationOptions[index] ?? 25
-  if (!pomodoroRunning.value) {
+  if (!pomodoroRunning.value && !pomodoroPaused.value) {
     pomodoroRemainingSeconds.value = pomodoroMinutes.value * 60
   }
 }
@@ -742,7 +773,7 @@ onBeforeUnmount(() => {
         <button class="planner-pomodoro-card__close" @click="closePomodoro">×</button>
         <view class="planner-pomodoro-card__title">{{ pomodoroCopy.title }}</view>
         <view class="planner-pomodoro-card__subtitle">{{ pomodoroCopy.subtitle }}</view>
-        <view class="planner-pomodoro-card__timer">{{ pomodoroRunning ? pomodoroCountdownLabel : `${pomodoroMinutes}:00` }}</view>
+        <view class="planner-pomodoro-card__timer">{{ (pomodoroRunning || pomodoroPaused) ? pomodoroCountdownLabel : `${pomodoroMinutes}:00` }}</view>
         <view class="planner-pomodoro-card__status">{{ pomodoroLinkLabel }}</view>
         <view class="planner-pomodoro-card__binding">
           <view>{{ pomodoroBoundDeviceLabel }}</view>
@@ -760,28 +791,30 @@ onBeforeUnmount(() => {
           mode="selector"
           :range="pomodoroDurationLabels"
           :value="pomodoroDurationIndex"
-          :disabled="pomodoroRunning"
+          :disabled="pomodoroRunning || pomodoroPaused"
           @change="selectPomodoroDuration"
         >
           <view class="planner-pomodoro-card__picker">{{ pomodoroMinutes }} min</view>
         </picker>
 
-        <view class="planner-pomodoro-card__actions">
-          <button class="planner-pomodoro-card__primary" :disabled="pomodoroRunning" @click="startPomodoro">{{ pomodoroCopy.start }}</button>
+        <view class="planner-pomodoro-card__actions planner-pomodoro-card__actions--primary">
+          <button class="planner-pomodoro-card__primary" :disabled="pomodoroRunning" @click="startPomodoro">{{ pomodoroStartButtonLabel }}</button>
           <button
             class="planner-pomodoro-card__ghost"
-            :class="{ 'planner-pomodoro-card__ghost--danger': pomodoroRunning }"
-            :style="pomodoroStopButtonStyle"
+            :style="pomodoroPauseButtonStyle"
             :disabled="!pomodoroRunning"
-            @click="stopPomodoro"
-          >{{ pomodoroCopy.stop }}</button>
+            @click="pausePomodoro"
+          >{{ pomodoroCopy.pause }}</button>
+          <button
+            class="planner-pomodoro-card__ghost"
+            :style="pomodoroEndButtonStyle"
+            :disabled="!(pomodoroRunning || pomodoroPaused)"
+            @click="endPomodoro"
+          >{{ pomodoroCopy.end }}</button>
         </view>
         <view class="planner-pomodoro-card__actions planner-pomodoro-card__actions--secondary">
           <button class="planner-pomodoro-card__ghost" @click="connectPomodoroDevice">{{ pomodoroCopy.connect }}</button>
-          <button class="planner-pomodoro-card__ghost" @click="pingPomodoroDevice">{{ pomodoroCopy.ping }}</button>
-        </view>
-        <view class="planner-pomodoro-card__actions planner-pomodoro-card__actions--secondary">
-          <button class="planner-pomodoro-card__ghost planner-pomodoro-card__ghost--wide" :disabled="pomodoroScanningDevices" @click="scanPomodoroDevices">
+          <button class="planner-pomodoro-card__ghost" :disabled="pomodoroScanningDevices" @click="scanPomodoroDevices">
             {{ pomodoroScanningDevices ? pomodoroCopy.scanningDevices : pomodoroCopy.scan }}
           </button>
         </view>
