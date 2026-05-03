@@ -48,7 +48,7 @@ const PET_MAX_X = 90
 const PET_MIN_Y = 26
 const PET_MAX_Y = 92
 const TOWN_HOME_ACTION_STORAGE_KEY = 'koko-town-home-action'
-const TOWN_GUIDE_STORAGE_KEY = 'hasSeenTownGuide'
+const TOWN_GUIDE_STORAGE_KEY = 'hasSeenTownGuideCommunityV1'
 const TOWN_INVITE_SHARE_STORAGE_KEY = 'koko-town-share-invite'
 
 const { pet, economy, shopItems, todayTasks, completedTasks, settings, purchaseShopItem, syncEconomyFromCloud } = useKokoState()
@@ -219,6 +219,16 @@ const guideSteps = computed<TownGuideStep[]>(() => {
       title: isZh ? '宠物可以移动' : 'Your pet can move',
       body: isZh ? '点击地图任意位置，Koko 会用简单动画走过去。' : 'Tap anywhere on the map and Koko will walk there with a simple animation.',
       focus: 'pet',
+    },
+    {
+      title: isZh ? '社区联机小镇' : 'Community co-op town',
+      body: isZh ? '点右上角「联机」生成邀请。好友通过转发链接或线下扫码进入后，会出现在同一张地图上。' : 'Tap Co-op in the top-right to create an invite. Friends can join from a share link or by scanning your QR code nearby.',
+      focus: 'community',
+    },
+    {
+      title: isZh ? '在线和离线都是真实状态' : 'Online and offline are real',
+      body: isZh ? '好友在线时宠物会继续更新位置；如果好友离开或断线，就显示离线，宠物停在最后一次所在的位置。' : 'Online friends keep updating their pet positions. When they leave or disconnect, they show offline and their pet stays at its last spot.',
+      focus: 'community',
     },
     {
       title: isZh ? '每个地点都有作用' : 'Every location has a role',
