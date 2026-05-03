@@ -860,6 +860,7 @@ onBeforeUnmount(() => {
       <view class="town-guide-layer__mask" />
       <view class="town-guide-highlight" :style="guideHighlightStyle" />
       <view class="town-guide-bubble">
+        <button class="town-guide-bubble__close" @tap.stop="finishTownGuide">×</button>
         <view class="town-guide-bubble__pet">
           <PetLottieAvatar :size-rpx="112" />
         </view>
@@ -1646,6 +1647,30 @@ onBeforeUnmount(() => {
   top: 18rpx;
   width: 112rpx;
   z-index: 1;
+}
+
+.town-guide-bubble__close {
+  align-items: center;
+  background: rgba(255, 240, 202, 0.92);
+  border-radius: 50%;
+  color: #7d644f;
+  display: flex;
+  font-size: 32rpx;
+  font-weight: 900;
+  height: 50rpx;
+  justify-content: center;
+  line-height: 50rpx;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  right: 18rpx;
+  top: -62rpx;
+  width: 50rpx;
+  z-index: 3;
+}
+
+.town-guide-bubble__close::after {
+  border: none;
 }
 
 .town-guide-bubble__step {
