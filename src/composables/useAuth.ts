@@ -40,7 +40,8 @@ export interface AuthSessionResult extends LoginResult {
 
 const AUTH_MODE_STORAGE_KEY = 'koko-auth-mode-v1'
 const AUTH_WECHAT_ONBOARDING_STORAGE_KEY = 'koko-auth-wechat-onboarding-complete'
-const GUEST_PET_NAME = 'koko'
+const AUTH_GUEST_PROFILE_STORAGE_KEY = 'koko-auth-guest-profile-v1'
+const GUEST_PET_NAME = 'Koko'
 const GUEST_OPENID = 'guest-openid-local'
 
 const mockUser: AuthUser = {
@@ -79,6 +80,41 @@ const guestPet: PetProfile = {
   energy: 76,
   intimacy: 55,
   cleanliness: 90,
+}
+
+const readGuestProfile = () => {
+  try {
+    const value = uni.getStorageSync(AUTH_GUEST_PROFILE_STORAGE_KEY) as Partial<{
+      nickName: string
+      avatarUrl: string
+      petName: string
+    }> | undefined
+
+    return {
+      nickName: value?.nickName?.trim() || guestUser.nickName,
+      avatarUrl: typeof value?.avatarUrl === 'string' ? value.avatarUrl : guestUser.avatarUrl,
+      petName: value?.petName?.trim() || guestPet.name,
+    }
+  } catch {
+    return {
+      nickName: guestUser.nickName,
+      avatarUrl: guestUser.avatarUrl,
+      petName: guestPet.name,
+    }
+  }
+}
+
+const writeGuestProfile = (profile: { nickName?: string; avatarUrl?: string; petName?: string }) => {
+  try {
+    const current = readGuestProfile()
+    uni.setStorageSync(AUTH_GUEST_PROFILE_STORAGE_KEY, {
+      nickName: profile.nickName?.trim() || current.nickName,
+      avatarUrl: profile.avatarUrl ?? current.avatarUrl,
+      petName: profile.petName?.trim() || current.petName,
+    })
+  } catch {
+    // Guest profile remains usable for this session even if storage fails.
+  }
 }
 
 const user = ref<AuthUser | null>(null)
@@ -218,12 +254,17 @@ const useMockLogin = (): AuthSessionResult => {
 }
 
 const useGuestLogin = (): AuthSessionResult => {
+  const guestProfile = readGuestProfile()
+
   setAuthMode('guest')
   user.value = {
     ...guestUser,
+    nickName: guestProfile.nickName,
+    avatarUrl: guestProfile.avatarUrl,
   }
   pet.value = {
     ...guestPet,
+    name: guestProfile.petName,
   }
   isMockSession.value = false
   error.value = ''
@@ -301,10 +342,15 @@ const syncUserProfile = async (profile: { nickName?: string; avatarUrl?: string;
       }
       pet.value = {
         ...(pet.value ?? (inGuestMode ? guestPet : mockPet)),
-        name: inGuestMode ? GUEST_PET_NAME : nextPetName || pet.value?.name || mockPet.name,
+        name: nextPetName || pet.value?.name || (inGuestMode ? guestPet.name : mockPet.name),
       }
 
       if (inGuestMode) {
+        writeGuestProfile({
+          nickName: user.value.nickName,
+          avatarUrl: user.value.avatarUrl,
+          petName: pet.value.name,
+        })
         writeOnboardingState(true)
       } else if (profile.onboardingDone !== undefined) {
         writeOnboardingState(profile.onboardingDone)
@@ -335,8 +381,13 @@ const syncUserProfile = async (profile: { nickName?: string; avatarUrl?: string;
     if (inGuestMode) {
       pet.value = {
         ...(pet.value ?? guestPet),
-        name: GUEST_PET_NAME,
+        name: nextPetName || pet.value?.name || guestPet.name,
       }
+      writeGuestProfile({
+        nickName: user.value.nickName,
+        avatarUrl: user.value.avatarUrl,
+        petName: pet.value.name,
+      })
       writeOnboardingState(true)
     } else if (nextPetName) {
       pet.value = {
@@ -350,10 +401,6 @@ const syncUserProfile = async (profile: { nickName?: string; avatarUrl?: string;
 }
 
 const importWechatProfile = async (profile: { nickName?: string; avatarFilePath?: string }) => {
-  if (authMode.value === 'guest') {
-    return
-  }
-
   if (!user.value) {
     await login(authMode.value ?? 'wechat')
   }
@@ -365,7 +412,7 @@ const importWechatProfile = async (profile: { nickName?: string; avatarFilePath?
   }
 
   if (profile.avatarFilePath) {
-    if (!isWechatCloudConfigured() || isMockSession.value) {
+    if (authMode.value === 'guest' || !isWechatCloudConfigured() || isMockSession.value) {
       nextProfile.avatarUrl = profile.avatarFilePath
     } else {
       nextProfile.avatarUrl = await uploadAvatarToCloud(profile.avatarFilePath, user.value?._openid)
@@ -390,7 +437,7 @@ const completeOnboarding = async (options?: {
   if (authMode.value === 'guest') {
     await syncUserProfile({
       onboardingDone: true,
-      petName: GUEST_PET_NAME,
+      petName: options?.petName?.trim() || pet.value?.name?.trim() || GUEST_PET_NAME,
     })
     return
   }

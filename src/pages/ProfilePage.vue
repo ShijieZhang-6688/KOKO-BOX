@@ -19,7 +19,6 @@ const {
   syncTasksFromCloud,
   syncEconomyFromCloud,
   persistEconomyToCloud,
-  updatePet,
   updateSettings,
 } = useKokoState()
 const { t } = useLanguage()
@@ -151,10 +150,6 @@ const openRenameSheet = () => {
 }
 
 const openAvatarSheet = () => {
-  if (isGuestSession.value) {
-    return
-  }
-
   openSheet('avatar')
 }
 
@@ -190,7 +185,11 @@ const renamePet = async () => {
   renameSaving.value = true
   try {
     if (isGuestSession.value) {
-      updatePet({ name: nextName })
+      await syncUserProfile({ petName: nextName })
+      syncPetFromAuth({
+        ...(authPet.value ?? {}),
+        name: nextName,
+      })
     } else {
       await syncUserProfile({ petName: nextName })
       syncPetFromAuth({
@@ -234,10 +233,6 @@ const profileGroups = computed(() => [
 ])
 
 const chooseCustomAvatar = async () => {
-  if (isGuestSession.value) {
-    return
-  }
-
   try {
     const result = await new Promise<{ tempFilePaths?: string[] }>((resolve, reject) => {
       uni.chooseImage({
@@ -273,10 +268,6 @@ const chooseCustomAvatar = async () => {
 }
 
 const handleChooseAvatar = (event: { detail?: { avatarUrl?: string } }) => {
-  if (isGuestSession.value) {
-    return
-  }
-
   const avatarFilePath = event.detail?.avatarUrl
 
   if (!avatarFilePath) {
@@ -327,7 +318,7 @@ onMounted(async () => {
     <view class="profile-hero">
       <view class="profile-hero__top">
         <button
-          v-if="!isGuestSession && shouldShowAvatarImage"
+          v-if="shouldShowAvatarImage"
           class="profile-avatar profile-avatar--button"
           @click="openAvatarSheet"
         >
@@ -339,7 +330,7 @@ onMounted(async () => {
           />
         </button>
         <button
-          v-else-if="!isGuestSession"
+          v-else
           class="profile-avatar profile-avatar--button profile-avatar--empty"
           open-type="chooseAvatar"
           @chooseavatar="handleChooseAvatar"
@@ -349,10 +340,6 @@ onMounted(async () => {
             <view class="profile-avatar__sync-text">{{ profileCopy.avatarSyncHint }}</view>
           </view>
         </button>
-        <view v-else class="profile-avatar">
-          <view class="profile-avatar__fallback">{{ profileInitial }}</view>
-        </view>
-
         <view class="profile-hero__main">
           <view class="profile-hero__eyebrow">{{ t.profile.eyebrow }}</view>
           <view class="profile-hero__name">{{ displayName }}</view>
