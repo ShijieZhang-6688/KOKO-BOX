@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import PageScaffold from '../../src/components/PageScaffold.vue'
+import PetLottieAvatar from '../../src/components/PetLottieAvatar.vue'
 import { useAuth } from '../../src/composables/useAuth'
 import { useKokoState } from '../../src/composables/useKokoState'
 import { useLanguage } from '../../src/composables/useLanguage'
@@ -172,14 +173,8 @@ onLoad((options = {}) => {
     <view class="onboarding-page">
       <view class="onboarding-card">
         <view class="onboarding-card__top">
-          <view class="onboarding-pet-mark">
-            <view class="onboarding-pet-mark__ear onboarding-pet-mark__ear--left" />
-            <view class="onboarding-pet-mark__ear onboarding-pet-mark__ear--right" />
-            <view class="onboarding-pet-mark__face">
-              <view class="onboarding-pet-mark__eye onboarding-pet-mark__eye--left" />
-              <view class="onboarding-pet-mark__eye onboarding-pet-mark__eye--right" />
-              <view class="onboarding-pet-mark__nose" />
-            </view>
+          <view class="onboarding-pet-avatar">
+            <PetLottieAvatar :size-rpx="132" />
           </view>
         </view>
 
@@ -269,76 +264,13 @@ onLoad((options = {}) => {
 .onboarding-card__top {
   align-items: center;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
-.onboarding-pet-mark {
-  background: linear-gradient(180deg, #fff2d7, #ffdca2);
-  border-radius: 50%;
-  height: 118rpx;
-  position: relative;
-  width: 118rpx;
-}
-
-.onboarding-pet-mark__face {
-  background: linear-gradient(180deg, #ffc66f, #f2a04f);
-  border-radius: 46% 46% 42% 42%;
-  bottom: 22rpx;
-  height: 68rpx;
-  left: 50%;
-  position: absolute;
-  transform: translateX(-50%);
-  width: 76rpx;
-}
-
-.onboarding-pet-mark__ear {
-  background: #ef9e4f;
-  border-radius: 22rpx 22rpx 8rpx 8rpx;
-  height: 42rpx;
-  position: absolute;
-  top: 18rpx;
-  width: 28rpx;
-  z-index: 1;
-}
-
-.onboarding-pet-mark__ear--left {
-  left: 28rpx;
-  transform: rotate(-18deg);
-}
-
-.onboarding-pet-mark__ear--right {
-  right: 28rpx;
-  transform: rotate(18deg);
-}
-
-.onboarding-pet-mark__eye,
-.onboarding-pet-mark__nose {
-  background: #253047;
-  position: absolute;
-}
-
-.onboarding-pet-mark__eye {
-  border-radius: 999rpx;
-  height: 14rpx;
-  top: 28rpx;
-  width: 9rpx;
-}
-
-.onboarding-pet-mark__eye--left {
-  left: 22rpx;
-}
-
-.onboarding-pet-mark__eye--right {
-  right: 22rpx;
-}
-
-.onboarding-pet-mark__nose {
-  border-radius: 50%;
-  bottom: 18rpx;
-  height: 10rpx;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 16rpx;
+.onboarding-pet-avatar {
+  height: 132rpx;
+  overflow: visible;
+  width: 132rpx;
 }
 
 .onboarding-panel {
