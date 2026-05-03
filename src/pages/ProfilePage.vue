@@ -265,6 +265,12 @@ const isAvatarCancelError = (error: unknown) => {
   return message.includes('cancel') || message.includes('canceled') || message.includes('用户取消')
 }
 
+const isAvatarPermissionError = (error: unknown) => {
+  const rawMessage = getPickerErrorText(error)
+  const lowerMessage = rawMessage.toLowerCase()
+  return lowerMessage.includes('auth deny') || lowerMessage.includes('permission') || lowerMessage.includes('authorize') || rawMessage.includes('权限')
+}
+
 const buildAvatarFailureMessage = (error: unknown) => {
   const rawMessage = getPickerErrorText(error).trim()
 
@@ -300,11 +306,28 @@ const showAvatarFailure = (error: unknown) => {
     return
   }
 
+  const permissionError = isAvatarPermissionError(error)
+
   uni.showModal({
     title: t.value.profile.avatarFailed,
     content: buildAvatarFailureMessage(error),
-    showCancel: false,
-    confirmText: isZh.value ? '知道了' : 'OK',
+    showCancel: permissionError,
+    cancelText: isZh.value ? '先不了' : 'Not now',
+    confirmText: permissionError ? (isZh.value ? '去设置' : 'Settings') : (isZh.value ? '知道了' : 'OK'),
+    success: (result) => {
+      if (!permissionError || !result.confirm || typeof uni.openSetting !== 'function') {
+        return
+      }
+
+      uni.openSetting({
+        fail: (settingError) => {
+          uni.showToast({
+            title: getPickerErrorText(settingError) || t.value.profile.avatarFailed,
+            icon: 'none',
+          })
+        },
+      })
+    },
   })
 }
 
