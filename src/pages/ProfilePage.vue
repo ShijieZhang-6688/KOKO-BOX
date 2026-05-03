@@ -332,8 +332,7 @@ onMounted(async () => {
         <button
           v-else
           class="profile-avatar profile-avatar--button profile-avatar--empty"
-          open-type="chooseAvatar"
-          @chooseavatar="handleChooseAvatar"
+          @click="openAvatarSheet"
         >
           <view class="profile-avatar__fallback">
             <view class="profile-avatar__sync-icon">+</view>
