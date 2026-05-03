@@ -6,8 +6,18 @@ import { useLanguage } from '../composables/useLanguage'
 
 type ProfileSheet = 'rename' | 'petAttributes' | 'about' | 'privacy' | 'avatar'
 type PrivacySettingKey = 'hideChats' | 'allowChatClear' | 'allowCrossDeviceSummary' | 'lowDisturbanceMode' | 'demoMode'
+type AvatarChooseEvent = { detail?: { avatarUrl?: string; errMsg?: string } }
+type UniPickerError = { errMsg?: string }
+type UniChooseMedia = (options: {
+  count: number
+  mediaType: string[]
+  sourceType: string[]
+  sizeType: string[]
+  success: (result: { tempFiles?: Array<{ tempFilePath?: string; path?: string }> }) => void
+  fail: (error: UniPickerError) => void
+}) => void
 
-const { user, pet: authPet, authMode, isGuestSession, loading, importWechatProfile, login, syncUserProfile } = useAuth()
+const { user, pet: authPet, authMode, isGuestSession, loading, error: authError, importWechatProfile, login, syncUserProfile } = useAuth()
 const {
   pet,
   archive,
@@ -27,6 +37,7 @@ const avatarLoadFailed = ref(false)
 const activeSheet = ref<ProfileSheet | null>(null)
 const renameInput = ref(pet.value.name)
 const renameSaving = ref(false)
+const avatarSaving = ref(false)
 const displayName = computed(() => user.value?.nickName || (isGuestSession.value ? t.value.profile.guest : t.value.profile.kokoFriend))
 const accountModeLabel = computed(() => (isGuestSession.value ? t.value.profile.guestMode : t.value.profile.wechatAccount))
 const profileInitial = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'K')
@@ -232,54 +243,201 @@ const profileGroups = computed(() => [
   },
 ])
 
-const chooseCustomAvatar = async () => {
-  try {
-    const result = await new Promise<{ tempFilePaths?: string[] }>((resolve, reject) => {
-      uni.chooseImage({
-        count: 1,
-        sizeType: ['compressed'],
-        sourceType: ['album'],
-        success: resolve,
-        fail: reject,
-      })
-    })
+const getPickerErrorText = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message
+  }
 
-    const avatarFilePath = result.tempFilePaths?.[0]
-    if (!avatarFilePath) {
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (error && typeof error === 'object' && 'errMsg' in error) {
+    const errMsg = (error as { errMsg?: unknown }).errMsg
+    return typeof errMsg === 'string' ? errMsg : ''
+  }
+
+  return ''
+}
+
+const isAvatarCancelError = (error: unknown) => {
+  const message = getPickerErrorText(error).toLowerCase()
+  return message.includes('cancel') || message.includes('canceled') || message.includes('用户取消')
+}
+
+const buildAvatarFailureMessage = (error: unknown) => {
+  const rawMessage = getPickerErrorText(error).trim()
+
+  if (!rawMessage) {
+    return isZh.value ? '没有收到头像文件，请重新选择一次。' : 'No avatar file was returned. Please choose again.'
+  }
+
+  const lowerMessage = rawMessage.toLowerCase()
+
+  if (lowerMessage.includes('auth deny') || lowerMessage.includes('permission') || lowerMessage.includes('authorize') || rawMessage.includes('权限')) {
+    return isZh.value
+      ? `没有获得相册或头像权限，请在微信权限设置里允许后再试。原因：${rawMessage}`
+      : `Koko Box does not have album or avatar permission yet. Please allow it in WeChat settings and try again. Reason: ${rawMessage}`
+  }
+
+  if (lowerMessage.includes('cloud upload') || lowerMessage.includes('uploadfile') || lowerMessage.includes('upload file')) {
+    return isZh.value
+      ? `头像文件上传到云端失败，请检查网络和微信云开发配置。原因：${rawMessage}`
+      : `The avatar file could not be uploaded to cloud storage. Please check the network and WeChat cloud setup. Reason: ${rawMessage}`
+  }
+
+  if (lowerMessage.includes('chooseavatar') || lowerMessage.includes('avatar') || rawMessage.includes('头像')) {
+    return isZh.value
+      ? `微信头像没有返回可用文件，请重新点一次“使用微信头像”。原因：${rawMessage}`
+      : `WeChat did not return a usable avatar file. Please tap "Use WeChat avatar" again. Reason: ${rawMessage}`
+  }
+
+  return isZh.value ? `头像保存失败。原因：${rawMessage}` : `Avatar save failed. Reason: ${rawMessage}`
+}
+
+const showAvatarFailure = (error: unknown) => {
+  if (isAvatarCancelError(error)) {
+    return
+  }
+
+  uni.showModal({
+    title: t.value.profile.avatarFailed,
+    content: buildAvatarFailureMessage(error),
+    showCancel: false,
+    confirmText: isZh.value ? '知道了' : 'OK',
+  })
+}
+
+const chooseAvatarWithChooseImage = () =>
+  new Promise<string>((resolve, reject) => {
+    uni.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album'],
+      success: (result) => {
+        const avatarFilePath = result.tempFilePaths?.[0]
+        if (avatarFilePath) {
+          resolve(avatarFilePath)
+          return
+        }
+
+        reject(new Error('chooseImage returned no tempFilePaths.'))
+      },
+      fail: reject,
+    })
+  })
+
+const chooseAvatarWithChooseMedia = () =>
+  new Promise<string>((resolve, reject) => {
+    const chooseMedia = (uni as unknown as { chooseMedia?: UniChooseMedia }).chooseMedia
+
+    if (!chooseMedia) {
+      reject(new Error('chooseMedia is not available.'))
       return
     }
 
-    closeSheet()
+    chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album'],
+      sizeType: ['compressed'],
+      success: (result) => {
+        const avatarFilePath = result.tempFiles?.[0]?.tempFilePath || result.tempFiles?.[0]?.path
+        if (avatarFilePath) {
+          resolve(avatarFilePath)
+          return
+        }
+
+        reject(new Error('chooseMedia returned no tempFiles.'))
+      },
+      fail: reject,
+    })
+  })
+const chooseAlbumAvatarPath = async () => {
+  const chooseMedia = (uni as unknown as { chooseMedia?: UniChooseMedia }).chooseMedia
+
+  if (!chooseMedia) {
+    return chooseAvatarWithChooseImage()
+  }
+
+  try {
+    return await chooseAvatarWithChooseMedia()
+  } catch (error) {
+    const message = getPickerErrorText(error).toLowerCase()
+
+    if (isAvatarCancelError(error)) {
+      throw error
+    }
+
+    if (message.includes('not available') || message.includes('not support') || message.includes('undefined')) {
+      return chooseAvatarWithChooseImage()
+    }
+
+    throw error
+  }
+}
+
+const saveAvatarFromPath = async (avatarFilePath: string) => {
+  if (avatarSaving.value) {
+    return
+  }
+
+  if (!avatarFilePath.trim()) {
+    showAvatarFailure(new Error('Avatar file path is empty.'))
+    return
+  }
+
+  avatarSaving.value = true
+
+  try {
     await importWechatProfile({
       nickName: user.value?.nickName,
       avatarFilePath,
     })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (message && message.includes('cancel')) {
+    avatarLoadFailed.value = false
+    closeSheet()
+
+    if (authError.value) {
+      uni.showModal({
+        title: isZh.value ? '头像已暂存' : 'Avatar saved locally',
+        content: isZh.value
+          ? `头像已先显示在本机，但云端同步返回提示：${authError.value}`
+          : `The avatar is shown on this device, but cloud sync returned: ${authError.value}`,
+        showCancel: false,
+        confirmText: isZh.value ? '知道了' : 'OK',
+      })
       return
     }
 
     uni.showToast({
-      title: t.value.profile.avatarFailed,
-      icon: 'none',
+      title: isZh.value ? '头像已保存' : 'Avatar saved',
+      icon: 'success',
     })
+  } catch (error) {
+    showAvatarFailure(error)
+  } finally {
+    avatarSaving.value = false
   }
 }
 
-const handleChooseAvatar = (event: { detail?: { avatarUrl?: string } }) => {
+const chooseCustomAvatar = async () => {
+  try {
+    const avatarFilePath = await chooseAlbumAvatarPath()
+    await saveAvatarFromPath(avatarFilePath)
+  } catch (error) {
+    showAvatarFailure(error)
+  }
+}
+
+const handleChooseAvatar = async (event: AvatarChooseEvent) => {
   const avatarFilePath = event.detail?.avatarUrl
 
   if (!avatarFilePath) {
+    showAvatarFailure(new Error(event.detail?.errMsg || 'chooseAvatar returned no avatarUrl.'))
     return
   }
 
-  closeSheet()
-
-  void importWechatProfile({
-    nickName: user.value?.nickName,
-    avatarFilePath,
-  })
+  await saveAvatarFromPath(avatarFilePath)
 }
 
 const handleAvatarError = (event: { detail?: { errMsg?: string } }) => {
@@ -418,11 +576,11 @@ onMounted(async () => {
 
         <template v-else-if="activeSheet === 'avatar'">
           <view class="profile-sheet__title">{{ profileCopy.avatarTitle }}</view>
-          <button class="profile-sheet__primary" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
-            {{ profileCopy.avatarWechat }}
+          <button class="profile-sheet__primary" open-type="chooseAvatar" :disabled="avatarSaving" @chooseavatar="handleChooseAvatar">
+            {{ avatarSaving ? profileCopy.saving : profileCopy.avatarWechat }}
           </button>
-          <button class="profile-sheet__ghost" @click="chooseCustomAvatar">
-            {{ profileCopy.avatarAlbum }}
+          <button class="profile-sheet__ghost" :disabled="avatarSaving" @click="chooseCustomAvatar">
+            {{ avatarSaving ? profileCopy.saving : profileCopy.avatarAlbum }}
           </button>
           <button class="profile-sheet__text" @click="closeSheet">
             {{ profileCopy.avatarCancel }}
