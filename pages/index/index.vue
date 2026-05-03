@@ -32,7 +32,6 @@ const TOWN_PENDING_INVITE_STORAGE_KEY = 'koko-town-pending-invite'
 
 const normalizedPetName = computed(() => petName.value.trim())
 const canStart = computed(() => !loading.value && selectedLoginMode.value === 'wechat' && normalizedPetName.value.length > 0)
-const stepLabel = computed(() => (step.value === 'auth-choice' ? '1 / 2' : '2 / 2'))
 
 const changeLanguage = (nextLanguage: 'zh' | 'en') => {
   setLanguage(nextLanguage)
@@ -173,7 +172,6 @@ onLoad((options = {}) => {
     <view class="onboarding-page">
       <view class="onboarding-card">
         <view class="onboarding-card__top">
-          <view class="onboarding-card__step">{{ stepLabel }}</view>
           <view class="onboarding-pet-mark">
             <view class="onboarding-pet-mark__ear onboarding-pet-mark__ear--left" />
             <view class="onboarding-pet-mark__ear onboarding-pet-mark__ear--right" />
@@ -272,15 +270,6 @@ onLoad((options = {}) => {
   align-items: center;
   display: flex;
   justify-content: space-between;
-}
-
-.onboarding-card__step {
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 999rpx;
-  color: #8a7a68;
-  font-size: 24rpx;
-  font-weight: 800;
-  padding: 10rpx 18rpx;
 }
 
 .onboarding-pet-mark {
