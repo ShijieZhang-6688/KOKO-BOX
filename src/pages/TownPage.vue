@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { onHide, onLoad, onShow } from '@dcloudio/uni-app'
+import { onHide, onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import PetLottieAvatar from '../components/PetLottieAvatar.vue'
 import { useAuth } from '../composables/useAuth'
 import { useKokoState } from '../composables/useKokoState'
@@ -176,6 +176,11 @@ const communityAvailable = computed(() => authMode.value === 'wechat' && !isMock
 const communityOtherPartners = computed(() => communityPartners.value.filter((partner) => !partner.isSelf))
 const communityOnlinePartners = computed(() => communityOtherPartners.value.filter((partner) => partner.online))
 const communityPartnerCapacity = computed(() => Math.max((communityRoom.value?.memberCount ?? 1) - 1, 1))
+const activeCommunityInviteCode = computed(() => communityInviteCode.value || communityRoom.value?.inviteCode || '')
+const activeCommunityInvitePath = computed(() => {
+  if (communityInvitePath.value) return communityInvitePath.value
+  return activeCommunityInviteCode.value ? `/pages/town/index?invite=${activeCommunityInviteCode.value}` : ''
+})
 
 const townPendingTasks = computed(() => todayTasks.value.slice(0, 3))
 const townCompletedTasks = computed(() => completedTasks.value.slice(0, 3))
@@ -337,14 +342,17 @@ const communityPayload = () => ({
 })
 
 const applyCommunityState = (state: Awaited<ReturnType<typeof loadTownCommunityState>>) => {
+  const inviteCode = state.inviteCode || state.room.inviteCode
+  const invitePath = state.invitePath || (inviteCode ? `/pages/town/index?invite=${inviteCode}` : '')
+
   communityPartners.value = state.partners
   communityRoom.value = state.room
-  communityInvitePath.value = state.invitePath
-  communityInviteCode.value = state.inviteCode
+  communityInvitePath.value = invitePath
+  communityInviteCode.value = inviteCode
   communityQrCodeFileID.value = state.qrCodeFileID || communityQrCodeFileID.value
 
-  if (state.inviteCode && typeof uni.setStorageSync === 'function') {
-    uni.setStorageSync(TOWN_INVITE_SHARE_STORAGE_KEY, state.inviteCode)
+  if (inviteCode && typeof uni.setStorageSync === 'function') {
+    uni.setStorageSync(TOWN_INVITE_SHARE_STORAGE_KEY, inviteCode)
   }
 }
 
@@ -479,8 +487,8 @@ const createCommunityInvite = async () => {
 }
 
 const copyInvite = () => {
-  const text = communityInviteCode.value
-    ? `${communityCopy.value.title}: ${communityInvitePath.value || communityInviteCode.value}`
+  const text = activeCommunityInviteCode.value
+    ? `${communityCopy.value.title}: ${activeCommunityInvitePath.value || activeCommunityInviteCode.value}`
     : communityCopy.value.empty
 
   if (typeof uni.setClipboardData === 'function') {
@@ -492,6 +500,11 @@ const copyInvite = () => {
     })
   }
 }
+
+onShareAppMessage(() => ({
+  title: settings.value.language === 'zh' ? '邀请你加入 Koko 小镇' : 'Join my Koko Town',
+  path: activeCommunityInvitePath.value || '/pages/town/index',
+}))
 
 const greetPartner = (partner: TownCommunityPartner) => {
   if (guideVisible.value) return
@@ -793,20 +806,20 @@ onBeforeUnmount(() => {
           </button>
         </view>
 
-        <view v-if="communityInviteCode" class="town-invite-card">
+        <view v-if="activeCommunityInviteCode" class="town-invite-card">
           <view>
             <view class="town-invite-card__label">{{ communityCopy.qrTitle }}</view>
-            <view class="town-invite-card__code">{{ communityInviteCode }}</view>
+            <view class="town-invite-card__code">{{ activeCommunityInviteCode }}</view>
           </view>
           <image v-if="communityQrCodeFileID" class="town-invite-card__qr" :src="communityQrCodeFileID" mode="aspectFit" />
           <view v-else class="town-invite-card__qr town-invite-card__qr--empty">{{ communityCopy.qrPending }}</view>
         </view>
 
         <view class="town-community-panel__share-row">
-          <button class="town-community-panel__share" open-type="share" :disabled="!communityInviteCode">
+          <button class="town-community-panel__share" open-type="share" :disabled="!activeCommunityInviteCode">
             {{ communityCopy.share }}
           </button>
-          <button class="town-community-panel__share town-community-panel__share--soft" :disabled="!communityInviteCode" @tap="copyInvite">
+          <button class="town-community-panel__share town-community-panel__share--soft" :disabled="!activeCommunityInviteCode" @tap="copyInvite">
             {{ communityCopy.copy }}
           </button>
         </view>
