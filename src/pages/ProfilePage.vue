@@ -21,6 +21,13 @@ type UniChooseMedia = (options: {
   success: (result: { tempFiles?: Array<{ tempFilePath?: string; path?: string }> }) => void
   fail: (error: UniPickerError) => void
 }) => void
+type UniSaveFile = (options: {
+  tempFilePath: string
+  success: (result: { savedFilePath?: string }) => void
+  fail: (error: UniPickerError) => void
+}) => void
+
+const AVATAR_PREVIEW_STORAGE_KEY = 'koko-profile-avatar-preview-v2'
 
 const { user, pet: authPet, authMode, isGuestSession, loading, error: authError, importWechatProfile, login, syncUserProfile } = useAuth()
 const {
@@ -255,15 +262,57 @@ const getWechatCloudUrlApi = () =>
 
 const isCloudAvatarUrl = (avatarUrl: string) => avatarUrl.startsWith('cloud://')
 
+const readAvatarPreviewCache = () => {
+  try {
+    return String(uni.getStorageSync(AVATAR_PREVIEW_STORAGE_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+const writeAvatarPreviewCache = (avatarUrl: string) => {
+  try {
+    uni.setStorageSync(AVATAR_PREVIEW_STORAGE_KEY, avatarUrl)
+  } catch {
+    // The in-memory preview still keeps the avatar visible for this session.
+  }
+}
+
+const persistAvatarPreview = async (avatarFilePath: string) => {
+  const trimmedPath = avatarFilePath.trim()
+  const saveFile = (uni as unknown as { saveFile?: UniSaveFile }).saveFile
+
+  if (!trimmedPath || trimmedPath.startsWith('cloud://') || /^https?:\/\//i.test(trimmedPath) || !saveFile) {
+    writeAvatarPreviewCache(trimmedPath)
+    return trimmedPath
+  }
+
+  return new Promise<string>((resolve) => {
+    saveFile({
+      tempFilePath: trimmedPath,
+      success: (result) => {
+        const savedFilePath = result.savedFilePath?.trim() || trimmedPath
+        writeAvatarPreviewCache(savedFilePath)
+        resolve(savedFilePath)
+      },
+      fail: () => {
+        writeAvatarPreviewCache(trimmedPath)
+        resolve(trimmedPath)
+      },
+    })
+  })
+}
+
 const resolveAvatarDisplayUrl = async (avatarUrl?: string) => {
   const nextToken = avatarResolveToken + 1
   avatarResolveToken = nextToken
   const normalizedAvatarUrl = avatarUrl?.trim() ?? ''
+  const cachedPreview = readAvatarPreviewCache()
 
   avatarLoadFailed.value = false
 
   if (!normalizedAvatarUrl || !isCloudAvatarUrl(normalizedAvatarUrl)) {
-    avatarDisplayUrl.value = normalizedAvatarUrl
+    avatarDisplayUrl.value = normalizedAvatarUrl || cachedPreview
     return
   }
 
@@ -271,7 +320,7 @@ const resolveAvatarDisplayUrl = async (avatarUrl?: string) => {
 
   if (!wxCloud?.downloadFile && !wxCloud?.getTempFileURL) {
     if (!avatarDisplayUrl.value) {
-      avatarDisplayUrl.value = normalizedAvatarUrl
+      avatarDisplayUrl.value = cachedPreview || normalizedAvatarUrl
     }
     return
   }
@@ -297,7 +346,7 @@ const resolveAvatarDisplayUrl = async (avatarUrl?: string) => {
 
   if (!wxCloud.getTempFileURL) {
     if (!avatarDisplayUrl.value) {
-      avatarDisplayUrl.value = normalizedAvatarUrl
+      avatarDisplayUrl.value = cachedPreview || normalizedAvatarUrl
     }
     return
   }
@@ -318,7 +367,7 @@ const resolveAvatarDisplayUrl = async (avatarUrl?: string) => {
   } catch (error) {
     console.warn('[ProfilePage] avatar temp URL resolve failed:', getPickerErrorText(error) || normalizedAvatarUrl)
     if (!avatarDisplayUrl.value) {
-      avatarDisplayUrl.value = normalizedAvatarUrl
+      avatarDisplayUrl.value = cachedPreview || normalizedAvatarUrl
     }
   }
 }
@@ -493,7 +542,8 @@ const saveAvatarFromPath = async (avatarFilePath: string) => {
   avatarSaving.value = true
 
   try {
-    avatarDisplayUrl.value = avatarFilePath
+    const previewPath = await persistAvatarPreview(avatarFilePath)
+    avatarDisplayUrl.value = previewPath
     avatarLoadFailed.value = false
     await importWechatProfile({
       nickName: user.value?.nickName,
@@ -546,6 +596,13 @@ const handleChooseAvatar = async (event: AvatarChooseEvent) => {
 }
 
 const handleAvatarError = (event: { detail?: { errMsg?: string } }) => {
+  const cachedPreview = readAvatarPreviewCache()
+  if (cachedPreview && cachedPreview !== avatarDisplayUrl.value) {
+    avatarDisplayUrl.value = cachedPreview
+    avatarLoadFailed.value = false
+    return
+  }
+
   avatarLoadFailed.value = true
   console.warn('[ProfilePage] avatar image load failed:', event?.detail?.errMsg ?? avatarDisplayUrl.value, user.value?.avatarUrl)
 }
@@ -567,6 +624,12 @@ watch(
 )
 
 onMounted(async () => {
+  const cachedPreview = readAvatarPreviewCache()
+  if (cachedPreview && !avatarDisplayUrl.value) {
+    avatarDisplayUrl.value = cachedPreview
+    avatarLoadFailed.value = false
+  }
+
   const result = await login(authMode.value ?? 'wechat')
   syncPetFromAuth(result.pet)
   if (authMode.value !== 'guest') {
