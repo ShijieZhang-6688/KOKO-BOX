@@ -127,6 +127,7 @@ export interface ChatMessage {
   emotionTag: EmotionTag
   encrypted: boolean
   createdAt: string
+  source?: 'text' | 'voice'
 }
 
 export interface PetQuickReply {

@@ -6,10 +6,9 @@ import { useLanguage } from '../composables/useLanguage'
 
 type CallPhase = 'idle' | 'recording' | 'thinking' | 'playing' | 'error'
 type RecorderState = 'idle' | 'starting' | 'recording' | 'stopping'
-type QuickVoicePrompt = { label: string; text: string }
 
 const { t } = useLanguage()
-const { pet, messages, sendChatMessage, sendVoiceChatTurn } = useKokoState()
+const { pet, sendVoiceChatTurn } = useKokoState()
 
 const phase = ref<CallPhase>('idle')
 const transcript = ref('')
@@ -26,6 +25,8 @@ let recorderState: RecorderState = 'idle'
 let recordStartedAt = 0
 let pendingStopAfterStart = false
 let talkPressing = false
+let tapRecordingMode = false
+let lastTouchEndedAt = 0
 let startGuardTimer: ReturnType<typeof setTimeout> | undefined
 
 const isRecorderBusyError = (message = '') =>
@@ -46,19 +47,6 @@ const elapsedLabel = computed(() => {
   const seconds = elapsedSeconds.value % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
-
-const quickPrompts = computed<QuickVoicePrompt[]>(() => t.value.voiceCall.quickPrompts)
-const recentMessages = computed(() =>
-  messages.value.slice(-8).map((message) => ({
-    ...message,
-    label: message.role === 'user' ? t.value.voiceCall.you : pet.value.name,
-    timeLabel: new Date(message.createdAt).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }),
-  })),
-)
 
 const stopTimer = () => {
   if (timer) clearInterval(timer)
@@ -152,6 +140,7 @@ const ensureRecorder = () => {
     recorderState = 'idle'
     recordStartedAt = 0
     pendingStopAfterStart = false
+    tapRecordingMode = false
 
     if (!result.tempFilePath || muted.value || durationMs < 350) {
       phase.value = 'idle'
@@ -184,6 +173,7 @@ const ensureRecorder = () => {
       recorderState = 'idle'
       recordStartedAt = 0
       pendingStopAfterStart = false
+      tapRecordingMode = false
       phase.value = 'idle'
       return
     }
@@ -308,34 +298,33 @@ const stopRecord = () => {
 }
 
 const beginTalk = () => {
+  if (tapRecordingMode) return
   talkPressing = true
   void startRecord()
 }
 
 const endTalk = () => {
+  lastTouchEndedAt = Date.now()
+  if (tapRecordingMode) return
   talkPressing = false
   stopRecord()
 }
 
-const sendQuickPrompt = async (prompt: QuickVoicePrompt) => {
-  if (phase.value === 'recording' || phase.value === 'thinking' || phase.value === 'playing') return
+const toggleTapRecord = () => {
+  if (Date.now() - lastTouchEndedAt < 320) return
 
-  phase.value = 'thinking'
-  transcript.value = prompt.text
-  reply.value = ''
-  errorMessage.value = ''
-
-  try {
-    const result = await sendChatMessage(prompt.text)
-    reply.value = result.reply
-    if (result.coinReward.awarded) {
-      uni.showToast({ title: `+${result.coinReward.amount}`, icon: 'none' })
-    }
-    phase.value = 'idle'
-  } catch (error) {
-    phase.value = 'error'
-    errorMessage.value = getErrorText(error) || t.value.voiceCall.failed
+  if (phase.value === 'recording' || recorderState === 'starting' || recorderState === 'recording') {
+    tapRecordingMode = false
+    talkPressing = false
+    stopRecord()
+    return
   }
+
+  if (phase.value === 'thinking' || phase.value === 'playing') return
+
+  tapRecordingMode = true
+  talkPressing = true
+  void startRecord()
 }
 
 const toggleMuted = () => {
@@ -349,6 +338,8 @@ const toggleSpeaker = () => {
 }
 
 const endCall = () => {
+  tapRecordingMode = false
+  talkPressing = false
   if (phase.value === 'recording') stopRecord()
   audio?.stop()
   uni.navigateBack()
@@ -399,34 +390,6 @@ onBeforeUnmount(() => {
       <view class="voice-call__caption voice-call__caption--reply">{{ reply || t.voiceCall.emptyReply }}</view>
     </view>
 
-    <view class="voice-call__quick">
-      <button
-        v-for="prompt in quickPrompts"
-        :key="prompt.label"
-        class="voice-quick-chip"
-        :disabled="phase === 'recording' || phase === 'thinking' || phase === 'playing'"
-        @click="sendQuickPrompt(prompt)"
-      >
-        {{ prompt.label }}
-      </button>
-    </view>
-
-    <view class="voice-call__history">
-      <view class="voice-call__history-head">{{ t.voiceCall.historyTitle }}</view>
-      <scroll-view class="voice-call__history-scroll" scroll-y>
-        <view v-if="!recentMessages.length" class="voice-call__history-empty">{{ t.voiceCall.historyEmpty }}</view>
-        <view
-          v-for="message in recentMessages"
-          :key="message.id"
-          class="voice-history-item"
-          :class="{ 'voice-history-item--user': message.role === 'user' }"
-        >
-          <view class="voice-history-item__meta">{{ message.label }} · {{ message.timeLabel }}</view>
-          <view class="voice-history-item__text">{{ message.content }}</view>
-        </view>
-      </scroll-view>
-    </view>
-
     <view class="voice-call__controls">
       <button class="voice-control" :class="{ 'voice-control--active': muted }" @click="toggleMuted">
         <view class="voice-control__icon voice-control__icon--mute" />
@@ -438,6 +401,7 @@ onBeforeUnmount(() => {
         @touchstart.stop.prevent="beginTalk"
         @touchend.stop.prevent="endTalk"
         @touchcancel.stop.prevent="endTalk"
+        @tap.stop="toggleTapRecord"
       >
         <view class="voice-control__icon voice-control__icon--mic" />
         <text>{{ phase === 'recording' ? t.voiceCall.releaseToSend : t.voiceCall.hold }}</text>
@@ -600,91 +564,6 @@ onBeforeUnmount(() => {
 .voice-call__caption--reply {
   color: #365f56;
   font-weight: 700;
-}
-
-.voice-call__quick {
-  display: flex;
-  gap: 12rpx;
-  margin-top: 16rpx;
-  overflow-x: auto;
-  white-space: nowrap;
-}
-
-.voice-quick-chip {
-  background: rgba(255, 240, 202, 0.86);
-  border: none;
-  border-radius: 999rpx;
-  color: #6d5542;
-  flex: 0 0 auto;
-  font-size: 23rpx;
-  font-weight: 800;
-  height: 58rpx;
-  line-height: 58rpx;
-  margin: 0;
-  padding: 0 22rpx;
-}
-
-.voice-quick-chip::after {
-  border: none;
-}
-
-.voice-quick-chip[disabled] {
-  opacity: 0.52;
-}
-
-.voice-call__history {
-  background: rgba(255, 253, 248, 0.58);
-  border: 2rpx solid rgba(176, 143, 102, 0.1);
-  border-radius: 24rpx;
-  margin-top: 16rpx;
-  padding: 16rpx;
-}
-
-.voice-call__history-head {
-  color: #365f56;
-  font-size: 23rpx;
-  font-weight: 900;
-}
-
-.voice-call__history-scroll {
-  max-height: 178rpx;
-  margin-top: 10rpx;
-}
-
-.voice-call__history-empty {
-  color: #8a7a68;
-  font-size: 23rpx;
-  line-height: 1.42;
-  padding: 8rpx 0;
-}
-
-.voice-history-item {
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 18rpx;
-  margin-top: 10rpx;
-  padding: 12rpx 14rpx;
-}
-
-.voice-history-item:first-child {
-  margin-top: 0;
-}
-
-.voice-history-item--user {
-  background: rgba(225, 247, 236, 0.82);
-}
-
-.voice-history-item__meta {
-  color: #8a7a68;
-  font-size: 19rpx;
-  font-weight: 800;
-}
-
-.voice-history-item__text {
-  color: #253047;
-  font-size: 23rpx;
-  line-height: 1.42;
-  margin-top: 6rpx;
-  word-break: break-word;
 }
 
 .voice-call__controls {

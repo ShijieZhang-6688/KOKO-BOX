@@ -10,11 +10,21 @@ const { pet, messages, sendChatMessage, settings } = useKokoState()
 const draft = ref('')
 const sending = ref(false)
 const scrollIntoView = ref('')
+const historyCopy = computed(() => {
+  const isZh = settings.value.language === 'zh'
+  return {
+    title: isZh ? '聊天记录' : 'Chat history',
+    subtitle: isZh ? '文字聊天和语音聊天都会保存在这里。' : 'Text and voice chats are saved here.',
+    voice: isZh ? '语音' : 'Voice',
+    text: isZh ? '文字' : 'Text',
+  }
+})
 
 const visibleMessages = computed(() =>
   messages.value.map((item) => ({
     ...item,
     displayContent: settings.value.hideChats && item.role === 'user' ? t.value.chatPage.hiddenUserMessage : item.content,
+    sourceLabel: item.source === 'voice' ? historyCopy.value.voice : historyCopy.value.text,
     timeLabel: new Date(item.createdAt).toLocaleTimeString(settings.value.language === 'zh' ? 'zh-CN' : 'en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -52,6 +62,14 @@ watch(
 
 <template>
   <view class="chat-screen">
+    <view class="chat-history-header">
+      <view>
+        <view class="chat-history-header__title">{{ historyCopy.title }}</view>
+        <view class="chat-history-header__subtitle">{{ historyCopy.subtitle }}</view>
+      </view>
+      <view class="chat-history-header__count">{{ visibleMessages.length }}</view>
+    </view>
+
     <scroll-view class="chat-stream" scroll-y :scroll-into-view="scrollIntoView" scroll-with-animation>
       <view class="chat-stream__inner">
         <view
@@ -66,7 +84,7 @@ watch(
           </view>
           <view class="message-stack">
             <view class="message-meta">
-              {{ message.role === 'assistant' ? pet.name : t.chatPage.me }} · {{ message.timeLabel }}
+              {{ message.role === 'assistant' ? pet.name : t.chatPage.me }} · {{ message.sourceLabel }} · {{ message.timeLabel }}
             </view>
             <view class="message-bubble">{{ message.displayContent }}</view>
           </view>
@@ -103,6 +121,44 @@ watch(
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+}
+
+.chat-history-header {
+  align-items: center;
+  background: rgba(255, 253, 248, 0.86);
+  border-bottom: 2rpx solid rgba(176, 143, 102, 0.12);
+  box-sizing: border-box;
+  display: flex;
+  justify-content: space-between;
+  padding: 24rpx 28rpx 20rpx;
+}
+
+.chat-history-header__title {
+  color: #253047;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.chat-history-header__subtitle {
+  color: #7d8a74;
+  font-size: 23rpx;
+  line-height: 1.38;
+  margin-top: 6rpx;
+}
+
+.chat-history-header__count {
+  align-items: center;
+  background: #fff0ca;
+  border-radius: 999rpx;
+  color: #735420;
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 24rpx;
+  font-weight: 900;
+  height: 54rpx;
+  justify-content: center;
+  min-width: 54rpx;
+  padding: 0 18rpx;
 }
 
 .chat-composer__send::after {

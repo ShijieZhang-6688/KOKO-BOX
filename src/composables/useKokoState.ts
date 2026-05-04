@@ -172,6 +172,7 @@ const defaultMessages = (): ChatMessage[] => [
     emotionTag: 'happy',
     encrypted: false,
     createdAt: nowIso(),
+    source: 'text',
   },
 ]
 
@@ -1602,6 +1603,7 @@ const mapCloudHistoryToMessages = (history: PetDialogueHistoryMessage[]): ChatMe
     emotionTag: inferEmotion(item.content),
     encrypted: false,
     createdAt: item.createdAt ?? nowIso(),
+    source: 'text',
   }))
 
 const hydrateCloudChatHistory = async () => {
@@ -1766,7 +1768,7 @@ const getPetQuickReply = async (context?: string): Promise<PetQuickReply> => {
   }
 }
 
-const sendChatMessage = async (content: string, forcedEmotion?: EmotionTag) => {
+const sendChatMessage = async (content: string, forcedEmotion?: EmotionTag, source: ChatMessage['source'] = 'text') => {
   hydrateState()
   await hydrateCloudChatHistory()
   const trimmed = content.trim()
@@ -1784,6 +1786,7 @@ const sendChatMessage = async (content: string, forcedEmotion?: EmotionTag) => {
     emotionTag,
     encrypted,
     createdAt,
+    source,
   }
 
   messages.value = [
@@ -1824,6 +1827,7 @@ const sendChatMessage = async (content: string, forcedEmotion?: EmotionTag) => {
         emotionTag,
         encrypted,
         createdAt: nowIso(),
+        source,
       },
     ].slice(-MAX_CHAT_HISTORY)
   }
@@ -1973,31 +1977,29 @@ const sendVoiceChatTurn = async (tempFilePath: string) => {
   const createdAt = nowIso()
   const emotionTag = inferEmotion(result.transcript)
 
-  if (result.history?.length) {
-    messages.value = mapCloudHistoryToMessages(result.history)
-  } else {
-    messages.value = [
-      ...messages.value,
-      {
-        id: createId('msg'),
-        sessionId: CHAT_SESSION_ID,
-        role: 'user',
-        content: result.transcript,
-        emotionTag,
-        encrypted: settings.value.hideChats,
-        createdAt,
-      },
-      {
-        id: createId('msg'),
-        sessionId: CHAT_SESSION_ID,
-        role: 'assistant',
-        content: result.reply,
-        emotionTag,
-        encrypted: false,
-        createdAt: nowIso(),
-      },
-    ].slice(-MAX_CHAT_HISTORY)
-  }
+  messages.value = [
+    ...messages.value,
+    {
+      id: createId('msg'),
+      sessionId: CHAT_SESSION_ID,
+      role: 'user',
+      content: result.transcript,
+      emotionTag,
+      encrypted: settings.value.hideChats,
+      createdAt,
+      source: 'voice',
+    },
+    {
+      id: createId('msg'),
+      sessionId: CHAT_SESSION_ID,
+      role: 'assistant',
+      content: result.reply,
+      emotionTag,
+      encrypted: false,
+      createdAt: nowIso(),
+      source: 'voice',
+    },
+  ].slice(-MAX_CHAT_HISTORY)
 
   const coinReward = applyChatTurnEffects(emotionTag, createdAt, `voice:${createId('voice')}`, result.reply)
   persistState()
