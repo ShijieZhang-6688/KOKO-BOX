@@ -11,6 +11,7 @@ type UniPickerError = { errMsg?: string }
 type WechatCloudTempFile = { fileID?: string; tempFileURL?: string; status?: number; errMsg?: string }
 type WechatCloudUrlApi = {
   getTempFileURL?: (options: { fileList: string[] }) => Promise<{ fileList?: WechatCloudTempFile[] }>
+  downloadFile?: (options: { fileID: string }) => Promise<{ tempFilePath?: string }>
 }
 type UniChooseMedia = (options: {
   count: number
@@ -260,15 +261,44 @@ const resolveAvatarDisplayUrl = async (avatarUrl?: string) => {
   const normalizedAvatarUrl = avatarUrl?.trim() ?? ''
 
   avatarLoadFailed.value = false
-  avatarDisplayUrl.value = normalizedAvatarUrl
 
   if (!normalizedAvatarUrl || !isCloudAvatarUrl(normalizedAvatarUrl)) {
+    avatarDisplayUrl.value = normalizedAvatarUrl
     return
   }
 
   const wxCloud = getWechatCloudUrlApi()
 
-  if (!wxCloud?.getTempFileURL) {
+  if (!wxCloud?.downloadFile && !wxCloud?.getTempFileURL) {
+    if (!avatarDisplayUrl.value) {
+      avatarDisplayUrl.value = normalizedAvatarUrl
+    }
+    return
+  }
+
+  if (wxCloud.downloadFile) {
+    try {
+      const result = await wxCloud.downloadFile({
+        fileID: normalizedAvatarUrl,
+      })
+      const tempFilePath = result.tempFilePath?.trim()
+
+      if (avatarResolveToken !== nextToken || !tempFilePath) {
+        return
+      }
+
+      avatarLoadFailed.value = false
+      avatarDisplayUrl.value = tempFilePath
+      return
+    } catch (error) {
+      console.warn('[ProfilePage] avatar cloud download failed:', getPickerErrorText(error) || normalizedAvatarUrl)
+    }
+  }
+
+  if (!wxCloud.getTempFileURL) {
+    if (!avatarDisplayUrl.value) {
+      avatarDisplayUrl.value = normalizedAvatarUrl
+    }
     return
   }
 
@@ -283,9 +313,13 @@ const resolveAvatarDisplayUrl = async (avatarUrl?: string) => {
       return
     }
 
+    avatarLoadFailed.value = false
     avatarDisplayUrl.value = tempFileURL
   } catch (error) {
     console.warn('[ProfilePage] avatar temp URL resolve failed:', getPickerErrorText(error) || normalizedAvatarUrl)
+    if (!avatarDisplayUrl.value) {
+      avatarDisplayUrl.value = normalizedAvatarUrl
+    }
   }
 }
 
