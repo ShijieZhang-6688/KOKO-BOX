@@ -26,6 +26,7 @@ const pageTitleKeyByRoute: Record<string, keyof (typeof copy)['en']['nav']> = {
 let syncedTabBarLanguage: Language | '' = ''
 let syncedTitleKey = ''
 let syncedTitleLanguage: Language | '' = ''
+let tabBarRetryTimer: ReturnType<typeof setTimeout> | undefined
 
 const currentRoute = () => {
   if (typeof getCurrentPages !== 'function') return ''
@@ -39,16 +40,45 @@ export const syncNativeLanguageUi = (language: Language, route = currentRoute())
 
   const nav = copy[language].nav
 
-  if (syncedTabBarLanguage !== language && typeof uni.setTabBarItem === 'function') {
-    const tabLabels = [nav.home, nav.planner, nav.town, nav.profile]
+  const syncTabBar = (attempt = 0) => {
+    if (typeof uni.setTabBarItem !== 'function') return
+
+    const tabLabels = [copy[language].nav.home, copy[language].nav.planner, copy[language].nav.town, copy[language].nav.profile]
+    let pendingCount = tabBarPages.length
+    let hasFailed = false
+
+    const completeOne = () => {
+      pendingCount -= 1
+      if (pendingCount > 0) return
+
+      if (!hasFailed) {
+        syncedTabBarLanguage = language
+        return
+      }
+
+      if (attempt >= 4) return
+
+      if (tabBarRetryTimer) clearTimeout(tabBarRetryTimer)
+      tabBarRetryTimer = setTimeout(() => {
+        syncTabBar(attempt + 1)
+      }, 120 + attempt * 180)
+    }
+
     tabBarPages.forEach((_, index) => {
       uni.setTabBarItem({
         index,
         text: tabLabels[index],
-        fail: () => undefined,
+        success: completeOne,
+        fail: () => {
+          hasFailed = true
+          completeOne()
+        },
       })
     })
-    syncedTabBarLanguage = language
+  }
+
+  if (syncedTabBarLanguage !== language) {
+    syncTabBar()
   }
 
   const titleKey = pageTitleKeyByRoute[route]

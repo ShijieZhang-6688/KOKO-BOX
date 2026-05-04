@@ -2,8 +2,11 @@
 import { WECHAT_CLOUD_ENV_ID, isWechatCloudConfigured } from './src/config/cloud'
 import { useAuth } from './src/composables/useAuth'
 import { useKokoState } from './src/composables/useKokoState'
+import { useLanguage } from './src/composables/useLanguage'
+import { syncNativeLanguageUi } from './src/utils/nativeLanguageUi'
 
 const { authMode, hasCompletedOnboarding, login } = useAuth()
+const { language } = useLanguage()
 const { syncPetFromAuth, syncCourseScheduleFromCloud, syncTasksFromCloud } = useKokoState()
 
 const syncSessionPetFromCloud = async () => {
@@ -64,7 +67,10 @@ export default {
     })
   },
   onShow() {
+    syncNativeLanguageUi(language.value)
+
     void syncSessionPetFromCloud().finally(() => {
+      syncNativeLanguageUi(language.value)
       ensureEntryGate()
     })
   },
